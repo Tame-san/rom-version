@@ -1,0 +1,9 @@
+# Ignore massive ROM archives by default in git
+*.zip
+mame/roms/*.zip
+mame/bios/*.zip
+
+# Keep directories
+!mame/
+!mame/roms/
+!mame/bios/
