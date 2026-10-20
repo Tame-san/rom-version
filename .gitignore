@@ -7,3 +7,7 @@ mame/bios/*.zip
 !mame/
 !mame/roms/
 !mame/bios/
+
+# Symlinks
+Roms
+
