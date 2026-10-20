@@ -12,7 +12,6 @@ add_compile_options(
     -flto
     -Wall
     -Wextra
-    -fvisibility=hidden
     -ffast-math
 )
 
@@ -21,14 +20,10 @@ include_directories(
     ${ANDROID_NDK}/sources/android/native_app_glue
 )
 
-# Build standard Android native app glue
-add_library(native_app_glue STATIC
-    ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
-)
-set_target_properties(native_app_glue PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
 # Arcade Engine Shared Library
+# Include android_native_app_glue.c directly to ensure ANativeActivity_onCreate is exported
 add_library(arcade_engine SHARED
+    ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
     src/game_profiles.cpp
     src/touch_input.cpp
     src/audio_engine.cpp
@@ -37,9 +32,14 @@ add_library(arcade_engine SHARED
     src/main.cpp
 )
 
+# Ensure ANativeActivity_onCreate is not stripped and support 16 KB page alignment for Android 15+
+target_link_options(arcade_engine PRIVATE
+    "-u" "ANativeActivity_onCreate"
+    "-Wl,-z,max-page-size=16384"
+)
+
 target_link_libraries(arcade_engine
     PRIVATE
-    native_app_glue
     android
     log
     EGL

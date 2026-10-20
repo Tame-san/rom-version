@@ -41,15 +41,18 @@ struct EngineContext {
 };
 
 static int init_display(EngineContext* engine) {
+    if (!engine || !engine->app || !engine->app->window) {
+        LOGE("init_display called without valid window");
+        return -1;
+    }
+
     const EGLint attribs[] = {
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
         EGL_BLUE_SIZE, 8,
         EGL_GREEN_SIZE, 8,
         EGL_RED_SIZE, 8,
-        EGL_ALPHA_SIZE, 8,
         EGL_DEPTH_SIZE, 0,
-        EGL_STENCIL_SIZE, 0,
         EGL_NONE
     };
 
@@ -59,21 +62,60 @@ static int init_display(EngineContext* engine) {
     };
 
     EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    eglInitialize(display, nullptr, nullptr);
-
-    EGLConfig config;
-    EGLint num_configs;
-    eglChooseConfig(display, attribs, &config, 1, &num_configs);
-
-    EGLSurface surface = eglCreateWindowSurface(display, config, engine->app->window, nullptr);
-    EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, context_attribs);
-
-    if (eglMakeCurrent(display, surface, surface, context) == EGL_FALSE) {
-        LOGE("Unable to eglMakeCurrent");
+    if (display == EGL_NO_DISPLAY) {
+        LOGE("eglGetDisplay failed");
         return -1;
     }
 
-    EGLint w, h;
+    if (!eglInitialize(display, nullptr, nullptr)) {
+        LOGE("eglInitialize failed");
+        return -1;
+    }
+
+    EGLConfig config = nullptr;
+    EGLint num_configs = 0;
+    eglChooseConfig(display, attribs, &config, 1, &num_configs);
+    if (num_configs <= 0 || config == nullptr) {
+        LOGW("Exact EGL attribs returned 0 configs, falling back to relaxed configuration");
+        const EGLint fallback_attribs[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_NONE
+        };
+        eglChooseConfig(display, fallback_attribs, &config, 1, &num_configs);
+    }
+
+    if (num_configs <= 0 || config == nullptr) {
+        LOGE("Unable to find suitable EGL config");
+        return -1;
+    }
+
+    // Configure window buffer geometry based on chosen visual ID (required on Samsung One UI)
+    EGLint visual_id = 0;
+    eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &visual_id);
+    ANativeWindow_setBuffersGeometry(engine->app->window, 0, 0, visual_id);
+
+    EGLSurface surface = eglCreateWindowSurface(display, config, engine->app->window, nullptr);
+    if (surface == EGL_NO_SURFACE) {
+        LOGE("eglCreateWindowSurface failed: 0x%x", eglGetError());
+        return -1;
+    }
+
+    EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, context_attribs);
+    if (context == EGL_NO_CONTEXT) {
+        LOGE("eglCreateContext failed: 0x%x", eglGetError());
+        eglDestroySurface(display, surface);
+        return -1;
+    }
+
+    if (eglMakeCurrent(display, surface, surface, context) == EGL_FALSE) {
+        LOGE("Unable to eglMakeCurrent: 0x%x", eglGetError());
+        eglDestroyContext(display, context);
+        eglDestroySurface(display, surface);
+        return -1;
+    }
+
+    EGLint w = 0, h = 0;
     eglQuerySurface(display, surface, EGL_WIDTH, &w);
     eglQuerySurface(display, surface, EGL_HEIGHT, &h);
 
@@ -107,12 +149,22 @@ static int init_display(EngineContext* engine) {
         }
     }
 
-    // Default flagship game search paths (Metal Slug)
+    // Default flagship game search paths (Metal Slug) across all common Android directories
     static const char* candidate_roms[] = {
-        "/sdcard/rom-version/mame/roms/mslug.zip",
-        "/storage/emulated/0/rom-version/mame/roms/mslug.zip",
         "/sdcard/roms/mslug.zip",
-        "/sdcard/mame/roms/mslug.zip"
+        "/storage/emulated/0/roms/mslug.zip",
+        "/sdcard/ROMs/mslug.zip",
+        "/storage/emulated/0/ROMs/mslug.zip",
+        "/sdcard/Download/roms/mslug.zip",
+        "/storage/emulated/0/Download/roms/mslug.zip",
+        "/sdcard/Download/mslug.zip",
+        "/storage/emulated/0/Download/mslug.zip",
+        "/sdcard/MAME4droid/roms/mslug.zip",
+        "/storage/emulated/0/MAME4droid/roms/mslug.zip",
+        "/sdcard/mame/roms/mslug.zip",
+        "/storage/emulated/0/mame/roms/mslug.zip",
+        "/sdcard/rom-version/mame/roms/mslug.zip",
+        "/storage/emulated/0/rom-version/mame/roms/mslug.zip"
     };
 
     for (const char* rom_path : candidate_roms) {

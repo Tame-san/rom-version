@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base application theme with complete immersive sticky fullscreen -->
-    <style name="Theme.ArcadeEngine.Fullscreen" parent="@android:style/Theme.NoTitleBar.Fullscreen">
+    <style name="Theme.ArcadeEngine.Fullscreen" parent="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowFullscreen">true</item>

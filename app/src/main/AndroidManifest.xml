@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- High-Performance Low-Latency Audio Features -->
+    <!-- High-Performance Low-Latency Audio Features (optional so all devices install) -->
     <uses-feature
         android:name="android.hardware.audio.low_latency"
-        android:required="true" />
+        android:required="false" />
     <uses-feature
         android:name="android.hardware.audio.output"
         android:required="true" />
@@ -23,10 +23,10 @@
         android:required="true" />
     <uses-feature
         android:name="android.hardware.touchscreen.multitouch"
-        android:required="true" />
+        android:required="false" />
     <uses-feature
         android:name="android.hardware.touchscreen.multitouch.distinct"
-        android:required="true" />
+        android:required="false" />
 
     <!-- Storage Permissions for Arcade ROMs and BIOSes -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -39,7 +39,7 @@
         android:roundIcon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.ArcadeEngine.Fullscreen"
-        android:hasCode="false">
+        android:extractNativeLibs="true">
 
         <!-- NativeActivity directly hosting C++ arcade engine -->
         <activity
