@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <atomic>
 #include "libretro.h"
 #include "game_profiles.h"
 #include "touch_input.h"
@@ -52,6 +53,9 @@ public:
     const struct retro_system_av_info& get_av_info() const { return av_info_; }
     double get_fps() const { return av_info_.timing.fps; }
 
+    // Path validation helper (SEC-07: Anti-path traversal)
+    static bool is_safe_rom_path(const std::string& path);
+
     // Direct invocation for mock/test cores
     void set_core_api_pointers(
         retro_init_t init_fn,
@@ -84,8 +88,8 @@ private:
     static int16_t cb_input_state(unsigned port, unsigned device, unsigned index, unsigned id);
     static void cb_log(enum retro_log_level level, const char* fmt, ...);
 
-    // Host singleton instance for Libretro C callbacks
-    static CoreHost* s_instance;
+    // Thread-safe Host singleton instance for Libretro C callbacks (SEC-10)
+    static std::atomic<CoreHost*> s_instance;
 
     void* core_handle_ = nullptr;
     bool game_loaded_ = false;

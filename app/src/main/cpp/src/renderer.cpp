@@ -240,7 +240,8 @@ void Renderer::set_pixel_format(enum retro_pixel_format format) {
 }
 
 void Renderer::update_frame(const void* data, unsigned width, unsigned height, size_t pitch) {
-    if (!data || width == 0 || height == 0) return;
+    // SEC-03: Reject NULL, invalid pointers, and hardware rendering sentinel
+    if (!data || data == RETRO_HW_FRAME_BUFFER_VALID || width == 0 || height == 0) return;
 
     frame_width_ = width;
     frame_height_ = height;

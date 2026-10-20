@@ -40,46 +40,44 @@ void AudioRingBuffer::clear() {
 size_t AudioRingBuffer::available_read() const {
     size_t w = write_pos_.load(std::memory_order_acquire);
     size_t r = read_pos_.load(std::memory_order_relaxed);
-    return (w >= r) ? (w - r) : 0;
+    return w - r;
 }
 
 size_t AudioRingBuffer::available_write() const {
     size_t r = read_pos_.load(std::memory_order_acquire);
     size_t w = write_pos_.load(std::memory_order_relaxed);
-    size_t occupied = (w >= r) ? (w - r) : 0;
+    size_t occupied = w - r;
     return (occupied < capacity_) ? (capacity_ - occupied) : 0;
 }
 
 size_t AudioRingBuffer::write(const int16_t* interleaved_pcm, size_t frames, size_t max_target_frames) {
     if (!interleaved_pcm || frames == 0) return 0;
 
-    size_t current_write = write_pos_.load(std::memory_order_relaxed);
     size_t current_read = read_pos_.load(std::memory_order_acquire);
+    size_t current_write = write_pos_.load(std::memory_order_relaxed);
+    size_t occupied = current_write - current_read;
 
-    size_t to_write = std::min(frames, capacity_);
-    const int16_t* pcm_src = interleaved_pcm;
-    if (frames > capacity_) {
-        pcm_src += (frames - capacity_) * 2;
-        to_write = capacity_;
+    // SPSC Invariant (SEC-01): The producer thread MUST NEVER mutate read_pos_!
+    // To clamp latency to max_target_frames, drop surplus incoming frames at ingress
+    if (max_target_frames > 0 && occupied >= max_target_frames) {
+        return 0;
     }
+
+    size_t max_allowed = (max_target_frames > 0 && max_target_frames < capacity_)
+                         ? max_target_frames
+                         : capacity_;
+
+    size_t free_space = (occupied < max_allowed) ? (max_allowed - occupied) : 0;
+    size_t to_write = std::min(frames, free_space);
+    if (to_write == 0) return 0;
 
     for (size_t i = 0; i < to_write; ++i) {
         size_t idx = (current_write + i) & mask_;
-        buffer_[idx].left = pcm_src[i * 2 + 0];
-        buffer_[idx].right = pcm_src[i * 2 + 1];
+        buffer_[idx].left = interleaved_pcm[i * 2 + 0];
+        buffer_[idx].right = interleaved_pcm[i * 2 + 1];
     }
 
-    size_t new_write = current_write + to_write;
-    write_pos_.store(new_write, std::memory_order_release);
-
-    // Latency Governor: If buffer backlog exceeds max_target_frames (e.g. ~10-15ms),
-    // skip oldest frames to keep audio latency strictly bounded
-    size_t total_occupied = (new_write >= current_read) ? (new_write - current_read) : 0;
-    if (max_target_frames > 0 && total_occupied > max_target_frames) {
-        size_t excess = total_occupied - max_target_frames;
-        read_pos_.store(current_read + excess, std::memory_order_release);
-    }
-
+    write_pos_.store(current_write + to_write, std::memory_order_release);
     return to_write;
 }
 
@@ -88,7 +86,7 @@ size_t AudioRingBuffer::read(int16_t* out_interleaved_pcm, size_t frames) {
 
     size_t current_read = read_pos_.load(std::memory_order_relaxed);
     size_t current_write = write_pos_.load(std::memory_order_acquire);
-    size_t available = (current_write >= current_read) ? (current_write - current_read) : 0;
+    size_t available = current_write - current_read;
 
     size_t to_read = std::min(frames, available);
 
@@ -125,7 +123,7 @@ aaudio_data_callback_result_t AudioEngine::data_callback(
 ) {
     (void)stream;
     AudioEngine* engine = static_cast<AudioEngine*>(user_data);
-    if (!engine || !engine->running_.load(std::memory_order_relaxed)) {
+    if (!engine || !engine->running_.load(std::memory_order_acquire)) {
         std::memset(audio_data, 0, num_frames * 2 * sizeof(int16_t));
         return AAUDIO_CALLBACK_RESULT_CONTINUE;
     }
@@ -143,7 +141,7 @@ void AudioEngine::error_callback(
     LOGE("AAudio stream error: %s (%d)", AAudio_convertResultToText(error), error);
     AudioEngine* engine = static_cast<AudioEngine*>(user_data);
     if (engine) {
-        engine->running_.store(false, std::memory_order_relaxed);
+        engine->running_.store(false, std::memory_order_release);
     }
 }
 #endif
@@ -205,16 +203,21 @@ bool AudioEngine::start(int sample_rate, int channels) {
          sample_rate_, channels_, burst, AAudioStream_getBufferSizeInFrames(stream_));
 #endif
 
-    running_.store(true, std::memory_order_relaxed);
+    running_.store(true, std::memory_order_release);
     return true;
 }
 
 void AudioEngine::stop() {
-    running_.store(false, std::memory_order_relaxed);
+    running_.store(false, std::memory_order_release);
 
 #ifdef __ANDROID__
     if (stream_) {
+        aaudio_stream_state_t input_state = AAUDIO_STREAM_STATE_STOPPING;
+        aaudio_stream_state_t next_state = AAUDIO_STREAM_STATE_STOPPED;
         AAudioStream_requestStop(stream_);
+        // Synchronize stop with AAudioStream_waitForStateChange before closing stream
+        int64_t timeout_nanos = 100 * 1000 * 1000LL; // 100ms
+        AAudioStream_waitForStateChange(stream_, input_state, &next_state, timeout_nanos);
         AAudioStream_close(stream_);
         stream_ = nullptr;
     }
@@ -224,7 +227,7 @@ void AudioEngine::stop() {
 }
 
 size_t AudioEngine::push_samples(const int16_t* pcm_data, size_t frames) {
-    if (!running_.load(std::memory_order_relaxed)) return 0;
+    if (!running_.load(std::memory_order_acquire)) return 0;
     // Target latency threshold: 768 frames is 16ms @ 48kHz, keeping latency under 10-15ms
     return ring_buffer_.write(pcm_data, frames, 768);
 }

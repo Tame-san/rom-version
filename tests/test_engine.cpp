@@ -515,8 +515,48 @@ void test_runahead_engine() {
     TEST_CHECK(restored, "Savestate loaded successfully");
     TEST_CHECK(s_mock_canonical_frame == 2, "Canonical state restored back to frame 2");
 
+    // Truncated savestate rejection (SEC-04)
+    std::vector<uint8_t> truncated_state = { 0x01, 0x02 };
+    bool reject_truncated = host.load_state(truncated_state);
+    TEST_CHECK(!reject_truncated, "load_state rejected truncated state buffer (SEC-04)");
+
     host.unload_game();
     TEST_CHECK(!host.is_game_loaded(), "Game unloaded cleanly");
+}
+
+// -------------------------------------------------------------
+// Test Suite 6: Security Hardening & Safe Invariants
+// -------------------------------------------------------------
+void test_security_hardening() {
+    std::cout << "\n=== Running Test Suite 6: Security Hardening & Safe Invariants ===" << std::endl;
+
+    // 6.1 SEC-07: Path Traversal Rejection
+    TEST_CHECK(!CoreHost::is_safe_rom_path("../../etc/passwd"), "Reject directory traversal ../../etc/passwd");
+    TEST_CHECK(!CoreHost::is_safe_rom_path("/storage/emulated/0/../system/priv-app"), "Reject traversal /../");
+    TEST_CHECK(!CoreHost::is_safe_rom_path("mslug.exe"), "Reject forbidden executable extension");
+    TEST_CHECK(!CoreHost::is_safe_rom_path(""), "Reject empty ROM path");
+    TEST_CHECK(CoreHost::is_safe_rom_path("/sdcard/rom-version/mame/roms/mslug.zip"), "Allow safe zip ROM path");
+    TEST_CHECK(CoreHost::is_safe_rom_path("garou.7z"), "Allow safe 7z ROM path");
+    TEST_CHECK(CoreHost::is_safe_rom_path("kof98"), "Allow canonical ROM identifier");
+
+    // 6.2 SEC-03: Reject RETRO_HW_FRAME_BUFFER_VALID in Renderer
+    Renderer renderer;
+    renderer.update_frame(RETRO_HW_FRAME_BUFFER_VALID, 320, 224, 640);
+    renderer.update_frame(nullptr, 320, 224, 640);
+    TEST_CHECK(true, "Renderer safely handled RETRO_HW_FRAME_BUFFER_VALID and nullptr (SEC-03)");
+
+    // 6.3 SEC-01 & SEC-02: SPSC Invariant & Latency Dropping at Ingress
+    AudioRingBuffer ring(1024);
+    std::vector<int16_t> pcm_data(512 * 2, 42);
+    size_t w1 = ring.write(pcm_data.data(), 512, 512); // Fill up to max 512
+    TEST_CHECK(w1 == 512, "Filled buffer to max target threshold (512 frames)");
+    TEST_CHECK(ring.available_read() == 512, "Available read is 512");
+
+    // Attempting to write when buffer is already at max_target_frames drops at ingress
+    std::vector<int16_t> extra_pcm(100 * 2, 99);
+    size_t w2 = ring.write(extra_pcm.data(), 100, 512);
+    TEST_CHECK(w2 == 0, "Ingress latency governor dropped surplus frames without mutating read_pos_ (SEC-01)");
+    TEST_CHECK(ring.available_read() == 512, "Queue depth remained strictly 512 frames");
 }
 
 int main() {
@@ -529,6 +569,7 @@ int main() {
     test_viewport_calculation();
     test_audio_ring_buffer();
     test_runahead_engine();
+    test_security_hardening();
 
     std::cout << "\n============================================================" << std::endl;
     std::cout << "  ALL TESTS PASSED SUCCESSFULLY! (Exit Code 0)" << std::endl;

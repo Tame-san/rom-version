@@ -49,6 +49,8 @@ extern "C" {
 
 #define RETRO_DEVICE_ID_JOYPAD_MASK      256
 
+#define RETRO_HW_FRAME_BUFFER_VALID      ((void*)(intptr_t)-1)
+
 #define RETRO_REGION_NTSC  0
 #define RETRO_REGION_PAL   1
 

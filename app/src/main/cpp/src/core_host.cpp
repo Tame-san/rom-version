@@ -18,18 +18,34 @@
 
 namespace arcade {
 
-CoreHost* CoreHost::s_instance = nullptr;
+std::atomic<CoreHost*> CoreHost::s_instance{nullptr};
+
+bool CoreHost::is_safe_rom_path(const std::string& path) {
+    if (path.empty()) return false;
+    // SEC-07: Reject directory traversal sequences
+    if (path.find("..") != std::string::npos) {
+        return false;
+    }
+    size_t dot_pos = path.find_last_of('.');
+    if (dot_pos == std::string::npos) {
+        // Direct ROM identifiers (e.g. "mslug", "kof98") are valid
+        return true;
+    }
+    std::string ext = path.substr(dot_pos);
+    for (char& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return (ext == ".zip" || ext == ".7z" || ext == ".bin" || ext == ".cue" || ext == ".rom");
+}
 
 CoreHost::CoreHost() {
-    s_instance = this;
+    s_instance.store(this, std::memory_order_release);
 }
 
 CoreHost::~CoreHost() {
     unload_game();
     unload_core();
-    if (s_instance == this) {
-        s_instance = nullptr;
-    }
+    s_instance.store(nullptr, std::memory_order_release);
 }
 
 void CoreHost::cb_log(enum retro_log_level level, const char* fmt, ...) {
@@ -49,7 +65,8 @@ void CoreHost::cb_log(enum retro_log_level level, const char* fmt, ...) {
 }
 
 bool CoreHost::cb_environment(unsigned cmd, void* data) {
-    if (!s_instance) return false;
+    CoreHost* host = s_instance.load(std::memory_order_acquire);
+    if (!host) return false;
 
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
@@ -58,8 +75,8 @@ bool CoreHost::cb_environment(unsigned cmd, void* data) {
             if (*fmt == RETRO_PIXEL_FORMAT_RGB565 ||
                 *fmt == RETRO_PIXEL_FORMAT_XRGB8888 ||
                 *fmt == RETRO_PIXEL_FORMAT_0RGB1555) {
-                if (s_instance->renderer_) {
-                    s_instance->renderer_->set_pixel_format(*fmt);
+                if (host->renderer_) {
+                    host->renderer_->set_pixel_format(*fmt);
                 }
                 LOGI("Pixel format set to %d", (int)*fmt);
                 return true;
@@ -68,12 +85,12 @@ bool CoreHost::cb_environment(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: {
-            *(const char**)data = s_instance->system_dir_.c_str();
+            *(const char**)data = host->system_dir_.c_str();
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: {
-            *(const char**)data = s_instance->save_dir_.c_str();
+            *(const char**)data = host->save_dir_.c_str();
             return true;
         }
 
@@ -99,7 +116,7 @@ bool CoreHost::cb_environment(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_GEOMETRY: {
             const struct retro_game_geometry* geom = static_cast<const struct retro_game_geometry*>(data);
             if (geom) {
-                s_instance->av_info_.geometry = *geom;
+                host->av_info_.geometry = *geom;
             }
             return true;
         }
@@ -137,30 +154,37 @@ bool CoreHost::cb_environment(unsigned cmd, void* data) {
 }
 
 void CoreHost::cb_video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
-    if (!s_instance || s_instance->suppress_video_) {
+    CoreHost* host = s_instance.load(std::memory_order_acquire);
+    if (!host || host->suppress_video_) {
         return;
     }
-    if (s_instance->renderer_) {
-        s_instance->renderer_->update_frame(data, width, height, pitch);
+    // SEC-03: Reject NULL, hardware frame buffer sentinel, and 0-dimension frames
+    if (!data || data == RETRO_HW_FRAME_BUFFER_VALID || width == 0 || height == 0) {
+        return;
+    }
+    if (host->renderer_) {
+        host->renderer_->update_frame(data, width, height, pitch);
     }
 }
 
 void CoreHost::cb_audio_sample(int16_t left, int16_t right) {
-    if (!s_instance || s_instance->mute_audio_) {
+    CoreHost* host = s_instance.load(std::memory_order_acquire);
+    if (!host || host->mute_audio_) {
         return;
     }
     int16_t samples[2] = { left, right };
-    if (s_instance->audio_engine_) {
-        s_instance->audio_engine_->push_samples(samples, 1);
+    if (host->audio_engine_) {
+        host->audio_engine_->push_samples(samples, 1);
     }
 }
 
 size_t CoreHost::cb_audio_sample_batch(const int16_t* data, size_t frames) {
-    if (!s_instance || s_instance->mute_audio_ || !data || frames == 0) {
+    CoreHost* host = s_instance.load(std::memory_order_acquire);
+    if (!host || host->mute_audio_ || !data || frames == 0) {
         return frames;
     }
-    if (s_instance->audio_engine_) {
-        return s_instance->audio_engine_->push_samples(data, frames);
+    if (host->audio_engine_) {
+        return host->audio_engine_->push_samples(data, frames);
     }
     return frames;
 }
@@ -170,14 +194,15 @@ void CoreHost::cb_input_poll(void) {
 }
 
 int16_t CoreHost::cb_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
-    if (!s_instance || !s_instance->touch_input_) {
+    CoreHost* host = s_instance.load(std::memory_order_acquire);
+    if (!host || !host->touch_input_) {
         return 0;
     }
 
     if (device == RETRO_DEVICE_JOYPAD) {
-        return s_instance->touch_input_->get_button_state(port, id);
+        return host->touch_input_->get_button_state(port, id);
     } else if (device == RETRO_DEVICE_ANALOG) {
-        return s_instance->touch_input_->get_analog_state(port, index, id);
+        return host->touch_input_->get_analog_state(port, index, id);
     }
 
     return 0;
@@ -331,6 +356,12 @@ void CoreHost::set_core_api_pointers(
 bool CoreHost::load_game(const std::string& rom_path) {
     unload_game();
 
+    // SEC-07: Anti-path traversal check
+    if (!is_safe_rom_path(rom_path)) {
+        LOGE("load_game rejected unsafe ROM path: %s", rom_path.c_str());
+        return false;
+    }
+
     current_rom_path_ = rom_path;
     active_profile_ = detect_game_profile(rom_path);
 
@@ -414,10 +445,24 @@ void CoreHost::step_frame() {
 
     // RunAhead Frame Rollback Engine:
     // Renders 1 frame ahead to completely eliminate intrinsic game input lag!
-    if (runahead_active_ && run_ahead_frames_ > 0 && fn_serialize_ && fn_unserialize_) {
+    if (runahead_active_ && run_ahead_frames_ > 0 && fn_serialize_ && fn_unserialize_ && fn_serialize_size_) {
+        // SEC-04: Dynamically query serialize size to prevent buffer overrun if core resized state
+        size_t cur_sz = fn_serialize_size_();
+        if (cur_sz == 0) {
+            suppress_video_ = false;
+            mute_audio_ = false;
+            fn_run_();
+            return;
+        }
+
+        if (canonical_state_.size() < cur_sz) {
+            canonical_state_.resize(cur_sz);
+        }
+        state_size_ = cur_sz;
+
         // 1. Snapshot canonical state at beginning of frame
         if (!fn_serialize_(canonical_state_.data(), state_size_)) {
-            // Rollback failed, fallback to direct run
+            LOGW("RunAhead serialize failed, falling back to direct run");
             suppress_video_ = false;
             mute_audio_ = false;
             fn_run_();
@@ -430,7 +475,9 @@ void CoreHost::step_frame() {
         fn_run_();
 
         // 3. Roll back to canonical baseline
-        fn_unserialize_(canonical_state_.data(), state_size_);
+        if (!fn_unserialize_(canonical_state_.data(), state_size_)) {
+            LOGE("RunAhead rollback unserialize failed! Game state may be desynchronized");
+        }
 
         // 4. Advance canonical state by 1 step for audio generation and continuous logic
         suppress_video_ = true;
@@ -456,8 +503,14 @@ bool CoreHost::save_state(std::vector<uint8_t>& out_state) {
 }
 
 bool CoreHost::load_state(const std::vector<uint8_t>& in_state) {
-    if (!game_loaded_ || !fn_unserialize_ || in_state.empty()) return false;
-    return fn_unserialize_(in_state.data(), in_state.size());
+    if (!game_loaded_ || !fn_unserialize_ || !fn_serialize_size_ || in_state.empty()) return false;
+    size_t expected_sz = fn_serialize_size_();
+    if (expected_sz == 0 || in_state.size() < expected_sz) {
+        LOGE("load_state failed: provided buffer size (%zu) smaller than expected (%zu)",
+             in_state.size(), expected_sz);
+        return false;
+    }
+    return fn_unserialize_(in_state.data(), expected_sz);
 }
 
 } // namespace arcade
