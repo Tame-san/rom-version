@@ -38,6 +38,19 @@ bool CoreHost::is_safe_rom_path(const std::string& path) {
     return (ext == ".zip" || ext == ".7z" || ext == ".bin" || ext == ".cue" || ext == ".rom");
 }
 
+bool CoreHost::is_safe_core_path(const std::string& path) {
+    if (path.empty()) return false;
+    // SEC-06: Reject directory traversal sequences
+    if (path.find("..") != std::string::npos) {
+        return false;
+    }
+    // Must be a valid shared object (.so)
+    if (path.length() < 3 || path.substr(path.length() - 3) != ".so") {
+        return false;
+    }
+    return true;
+}
+
 CoreHost::CoreHost() {
     s_instance.store(this, std::memory_order_release);
 }
@@ -210,6 +223,12 @@ int16_t CoreHost::cb_input_state(unsigned port, unsigned device, unsigned index,
 
 bool CoreHost::load_core(const std::string& core_path) {
     unload_core();
+
+    // SEC-06: Sandbox and path validation for dynamic libraries
+    if (!is_safe_core_path(core_path)) {
+        LOGE("load_core rejected unsafe core path: %s", core_path.c_str());
+        return false;
+    }
 
     LOGI("Loading Libretro core: %s", core_path.c_str());
     core_handle_ = dlopen(core_path.c_str(), RTLD_NOW | RTLD_LOCAL);

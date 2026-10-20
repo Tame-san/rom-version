@@ -530,7 +530,7 @@ void test_runahead_engine() {
 void test_security_hardening() {
     std::cout << "\n=== Running Test Suite 6: Security Hardening & Safe Invariants ===" << std::endl;
 
-    // 6.1 SEC-07: Path Traversal Rejection
+    // 6.1 SEC-05 & SEC-07: Path Traversal Rejection
     TEST_CHECK(!CoreHost::is_safe_rom_path("../../etc/passwd"), "Reject directory traversal ../../etc/passwd");
     TEST_CHECK(!CoreHost::is_safe_rom_path("/storage/emulated/0/../system/priv-app"), "Reject traversal /../");
     TEST_CHECK(!CoreHost::is_safe_rom_path("mslug.exe"), "Reject forbidden executable extension");
@@ -538,6 +538,13 @@ void test_security_hardening() {
     TEST_CHECK(CoreHost::is_safe_rom_path("/sdcard/rom-version/mame/roms/mslug.zip"), "Allow safe zip ROM path");
     TEST_CHECK(CoreHost::is_safe_rom_path("garou.7z"), "Allow safe 7z ROM path");
     TEST_CHECK(CoreHost::is_safe_rom_path("kof98"), "Allow canonical ROM identifier");
+
+    // 6.2 SEC-06: Shared Object Core Path Rejection
+    TEST_CHECK(!CoreHost::is_safe_core_path("../../data/malicious.so"), "Reject core traversal ../../malicious.so (SEC-06)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("/sdcard/core.apk"), "Reject non-so core file (SEC-06)");
+    TEST_CHECK(!CoreHost::is_safe_core_path(""), "Reject empty core path (SEC-06)");
+    TEST_CHECK(CoreHost::is_safe_core_path("/data/data/com.arcade.engine/lib/libretro_fbneo.so"), "Allow sandboxed so path (SEC-06)");
+    TEST_CHECK(CoreHost::is_safe_core_path("libretro_fbneo.so"), "Allow relative system so name (SEC-06)");
 
     // 6.2 SEC-03: Reject RETRO_HW_FRAME_BUFFER_VALID in Renderer
     Renderer renderer;

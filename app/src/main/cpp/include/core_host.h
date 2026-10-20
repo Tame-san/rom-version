@@ -53,8 +53,9 @@ public:
     const struct retro_system_av_info& get_av_info() const { return av_info_; }
     double get_fps() const { return av_info_.timing.fps; }
 
-    // Path validation helper (SEC-07: Anti-path traversal)
+    // Path validation helpers (Anti-path traversal & sandbox validation)
     static bool is_safe_rom_path(const std::string& path);
+    static bool is_safe_core_path(const std::string& path);
 
     // Direct invocation for mock/test cores
     void set_core_api_pointers(
