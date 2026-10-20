@@ -11,3 +11,14 @@ mame/bios/*.zip
 # Symlinks
 Roms
 
+# Android & Gradle build artifacts
+.gradle/
+build/
+app/build/
+.cxx/
+local.properties
+*.apk
+*.aab
+
+# Test binaries
+tests/test_engine
