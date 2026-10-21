@@ -64,9 +64,9 @@
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:alwaysRetainTaskState="true"
-            android:launchMode="standard"
+            android:launchMode="singleTask"
             android:resizeableActivity="false"
-            android:exported="false">
+            android:exported="true">
 
             <!-- Name of the native C++ library (.so) -->
             <meta-data
