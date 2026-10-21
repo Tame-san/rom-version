@@ -466,7 +466,11 @@ public class MainActivity extends Activity {
             case "mslugx": return "Metal Slug X (Neo Geo)";
             case "mslug5": return "Metal Slug 5 (Neo Geo)";
             case "garou": return "Garou: Mark of the Wolves (Neo Geo)";
+            case "kof96": return "The King of Fighters '96 (Neo Geo)";
+            case "kof97": return "The King of Fighters '97 (Neo Geo)";
             case "kof98": return "The King of Fighters '98 (Neo Geo)";
+            case "kof99": return "The King of Fighters '99 (Neo Geo)";
+            case "kof2000": return "The King of Fighters 2000 (Neo Geo)";
             case "kof2002": return "The King of Fighters 2002 (Neo Geo)";
             case "lastbld2": return "The Last Blade 2 (Neo Geo)";
             case "samsho4": return "Samurai Shodown IV (Neo Geo)";
