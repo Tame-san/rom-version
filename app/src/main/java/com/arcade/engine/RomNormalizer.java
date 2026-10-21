@@ -43,7 +43,20 @@ public class RomNormalizer {
             }
 
             String baseName = sourceFile.getName();
-            File cachedNormalized = new File(targetDir, "fbneo_" + baseName);
+            File normDir = new File(targetDir, "fbneo");
+            if (!normDir.exists()) {
+                normDir.mkdirs();
+            }
+            File cachedNormalized = new File(normDir, baseName);
+
+            // Ensure neogeo.zip is also present in normDir for parent ROM resolution
+            File biosInNormDir = new File(normDir, "neogeo.zip");
+            File masterBios = new File(new File(context.getExternalFilesDir(null), "bios"), "neogeo.zip");
+            if (masterBios.exists() && (!biosInNormDir.exists() || biosInNormDir.length() < 1000)) {
+                try {
+                    java.nio.file.Files.copy(masterBios.toPath(), biosInNormDir.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (Exception ignored) {}
+            }
 
             // If cache exists and is newer than source, use cached version
             if (cachedNormalized.exists() && cachedNormalized.length() > 0 &&
@@ -53,7 +66,7 @@ public class RomNormalizer {
             }
 
             Log.i(TAG, "Normalizing " + baseName + " for FBNeo engine...");
-            File tempFile = new File(targetDir, "temp_" + System.currentTimeMillis() + "_" + baseName);
+            File tempFile = new File(normDir, "temp_" + System.currentTimeMillis() + "_" + baseName);
 
             normalizeZipEntries(sourceFile, tempFile);
 

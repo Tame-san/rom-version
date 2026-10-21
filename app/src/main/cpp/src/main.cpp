@@ -483,8 +483,7 @@ void android_main(struct android_app* app) {
         struct android_poll_source* source;
 
         // Poll events: non-blocking when initialized, blocking when surface not yet ready
-        bool active = engine.is_initialized;
-        while ((ident = ALooper_pollOnce(active ? 0 : -1, nullptr, &events, (void**)&source)) >= 0) {
+        while ((ident = ALooper_pollOnce(engine.is_initialized ? 0 : -1, nullptr, &events, (void**)&source)) >= 0) {
             if (source != nullptr) {
                 source->process(app, source);
             }

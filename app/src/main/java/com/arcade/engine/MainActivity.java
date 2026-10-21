@@ -92,6 +92,7 @@ public class MainActivity extends Activity {
         ensureBiosSynchronized();
         updateBiosStatus();
         scanInternalRoms();
+        scanCommonPhonePaths();
     }
 
     private File getRomsDir() {
@@ -511,6 +512,8 @@ public class MainActivity extends Activity {
                 foundFile = localMslug;
             } else {
                 String[] candidates = {
+                    "/sdcard/Download/Roms/mslug.zip",
+                    "/storage/emulated/0/Download/Roms/mslug.zip",
                     "/sdcard/roms/mslug.zip",
                     "/storage/emulated/0/roms/mslug.zip",
                     "/sdcard/Download/roms/mslug.zip",
