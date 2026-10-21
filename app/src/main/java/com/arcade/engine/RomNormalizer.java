@@ -65,18 +65,42 @@ public class RomNormalizer {
                 return cachedNormalized;
             }
 
+            // Clean up any stale temporary files
+            File[] staleTemps = normDir.listFiles((dir, name) -> name.startsWith("temp_"));
+            if (staleTemps != null) {
+                for (File stale : staleTemps) {
+                    try {
+                        stale.delete();
+                    } catch (Exception ignored) {}
+                }
+            }
+
             Log.i(TAG, "Normalizing " + baseName + " for FBNeo engine...");
             File tempFile = new File(normDir, "temp_" + System.currentTimeMillis() + "_" + baseName);
 
-            normalizeZipEntries(sourceFile, tempFile);
+            try {
+                normalizeZipEntries(sourceFile, tempFile);
 
-            if (tempFile.exists() && tempFile.length() > 0) {
-                if (cachedNormalized.exists()) {
-                    cachedNormalized.delete();
+                if (tempFile.exists() && tempFile.length() > 0) {
+                    if (cachedNormalized.exists()) {
+                        cachedNormalized.delete();
+                    }
+                    if (tempFile.renameTo(cachedNormalized)) {
+                        Log.i(TAG, "Successfully created normalized ROM: " + cachedNormalized.getAbsolutePath());
+                        return cachedNormalized;
+                    } else {
+                        try {
+                            java.nio.file.Files.copy(tempFile.toPath(), cachedNormalized.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            Log.i(TAG, "Successfully copied normalized ROM: " + cachedNormalized.getAbsolutePath());
+                            return cachedNormalized;
+                        } catch (Exception copyEx) {
+                            Log.e(TAG, "Failed to copy temp file to cache: " + copyEx.getMessage());
+                        }
+                    }
                 }
-                if (tempFile.renameTo(cachedNormalized)) {
-                    Log.i(TAG, "Successfully created normalized ROM: " + cachedNormalized.getAbsolutePath());
-                    return cachedNormalized;
+            } finally {
+                if (tempFile.exists()) {
+                    tempFile.delete();
                 }
             }
         } catch (Exception e) {
@@ -97,7 +121,11 @@ public class RomNormalizer {
             Enumeration<? extends ZipEntry> entries = z.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
-                names.add(entry.getName());
+                String name = entry.getName();
+                if (entry.isDirectory() || name.contains("/") || name.contains("\\")) {
+                    continue;
+                }
+                names.add(name);
             }
 
             // Check for Neo Geo BIOS missing aliases
@@ -133,64 +161,79 @@ public class RomNormalizer {
     public static void normalizeZipEntries(File srcZip, File dstZip) throws Exception {
         byte[] buffer = new byte[65536];
         Set<String> writtenNames = new HashSet<>();
+        boolean success = false;
 
-        try (ZipFile zin = new ZipFile(srcZip);
-             ZipOutputStream zout = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(dstZip)))) {
+        try {
+            try (ZipFile zin = new ZipFile(srcZip);
+                 ZipOutputStream zout = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(dstZip)))) {
 
-            // Use fast deflate compression for speed
-            zout.setLevel(1);
+                // Use fast deflate compression for speed
+                zout.setLevel(1);
 
-            Enumeration<? extends ZipEntry> entries = zin.entries();
-            while (entries.hasMoreElements()) {
-                ZipEntry entry = entries.nextElement();
-                String name = entry.getName();
+                Enumeration<? extends ZipEntry> entries = zin.entries();
+                while (entries.hasMoreElements()) {
+                    ZipEntry entry = entries.nextElement();
+                    String name = entry.getName();
 
-                if (!writtenNames.contains(name)) {
-                    writtenNames.add(name);
-                    zout.putNextEntry(new ZipEntry(name));
-                    try (InputStream in = new BufferedInputStream(zin.getInputStream(entry))) {
-                        int len;
-                        while ((len = in.read(buffer)) > 0) {
-                            zout.write(buffer, 0, len);
+                    // Arcade drivers only look for root files; skip subdirectories and non-root entries
+                    if (entry.isDirectory() || name.contains("/") || name.contains("\\")) {
+                        continue;
+                    }
+
+                    if (!writtenNames.contains(name)) {
+                        writtenNames.add(name);
+                        zout.putNextEntry(new ZipEntry(name));
+                        try (InputStream in = new BufferedInputStream(zin.getInputStream(entry))) {
+                            int len;
+                            while ((len = in.read(buffer)) > 0) {
+                                zout.write(buffer, 0, len);
+                            }
+                        }
+                        zout.closeEntry();
+                    }
+
+                    // Generate and inject aliases
+                    Matcher m = NEO_ROM_PATTERN.matcher(name);
+                    if (m.matches()) {
+                        String baseId = m.group(1);
+                        String ext = m.group(2);
+                        String alias = baseId + "-" + ext + "." + ext;
+
+                        writeAliasIfMissing(zin, entry, alias, zout, writtenNames, buffer);
+
+                        if (ext.equalsIgnoreCase("p2")) {
+                            writeAliasIfMissing(zin, entry, baseId + "-p2.sp2", zout, writtenNames, buffer);
+                            writeAliasIfMissing(zin, entry, baseId + "-p2.ep1", zout, writtenNames, buffer);
+                            writeAliasIfMissing(zin, entry, baseId + "-p2.p2", zout, writtenNames, buffer);
+                        } else if (ext.equalsIgnoreCase("p3")) {
+                            writeAliasIfMissing(zin, entry, baseId + "-p3.sp3", zout, writtenNames, buffer);
+                            writeAliasIfMissing(zin, entry, baseId + "-p3.p3", zout, writtenNames, buffer);
+                        } else if (ext.equalsIgnoreCase("p4")) {
+                            writeAliasIfMissing(zin, entry, baseId + "-p4.sp4", zout, writtenNames, buffer);
+                            writeAliasIfMissing(zin, entry, baseId + "-p4.p4", zout, writtenNames, buffer);
                         }
                     }
-                    zout.closeEntry();
-                }
 
-                // Generate and inject aliases
-                Matcher m = NEO_ROM_PATTERN.matcher(name);
-                if (m.matches()) {
-                    String baseId = m.group(1);
-                    String ext = m.group(2);
-                    String alias = baseId + "-" + ext + "." + ext;
-
-                    writeAliasIfMissing(zin, entry, alias, zout, writtenNames, buffer);
-
-                    if (ext.equalsIgnoreCase("p2")) {
-                        writeAliasIfMissing(zin, entry, baseId + "-p2.sp2", zout, writtenNames, buffer);
-                        writeAliasIfMissing(zin, entry, baseId + "-p2.ep1", zout, writtenNames, buffer);
-                        writeAliasIfMissing(zin, entry, baseId + "-p2.p2", zout, writtenNames, buffer);
-                    } else if (ext.equalsIgnoreCase("p3")) {
-                        writeAliasIfMissing(zin, entry, baseId + "-p3.sp3", zout, writtenNames, buffer);
-                        writeAliasIfMissing(zin, entry, baseId + "-p3.p3", zout, writtenNames, buffer);
-                    } else if (ext.equalsIgnoreCase("p4")) {
-                        writeAliasIfMissing(zin, entry, baseId + "-p4.sp4", zout, writtenNames, buffer);
-                        writeAliasIfMissing(zin, entry, baseId + "-p4.p4", zout, writtenNames, buffer);
+                    // Neo Geo BIOS specific aliases
+                    if (name.equalsIgnoreCase("asia-s3.rom")) {
+                        writeAliasIfMissing(zin, entry, "sp-s3.sp1", zout, writtenNames, buffer);
+                    } else if (name.equalsIgnoreCase("sp-u2.sp1")) {
+                        writeAliasIfMissing(zin, entry, "usa_2slt.bin", zout, writtenNames, buffer);
+                    } else if (name.equalsIgnoreCase("sp-s2.sp1")) {
+                        writeAliasIfMissing(zin, entry, "neo-geo.rom", zout, writtenNames, buffer);
+                    } else if (name.equalsIgnoreCase("sm1.sm1")) {
+                        writeAliasIfMissing(zin, entry, "sm1.bin", zout, writtenNames, buffer);
+                    } else if (name.equalsIgnoreCase("sfix.sfix")) {
+                        writeAliasIfMissing(zin, entry, "sfix.bin", zout, writtenNames, buffer);
                     }
                 }
-
-                // Neo Geo BIOS specific aliases
-                if (name.equalsIgnoreCase("asia-s3.rom")) {
-                    writeAliasIfMissing(zin, entry, "sp-s3.sp1", zout, writtenNames, buffer);
-                } else if (name.equalsIgnoreCase("sp-u2.sp1")) {
-                    writeAliasIfMissing(zin, entry, "usa_2slt.bin", zout, writtenNames, buffer);
-                } else if (name.equalsIgnoreCase("sp-s2.sp1")) {
-                    writeAliasIfMissing(zin, entry, "neo-geo.rom", zout, writtenNames, buffer);
-                } else if (name.equalsIgnoreCase("sm1.sm1")) {
-                    writeAliasIfMissing(zin, entry, "sm1.bin", zout, writtenNames, buffer);
-                } else if (name.equalsIgnoreCase("sfix.sfix")) {
-                    writeAliasIfMissing(zin, entry, "sfix.bin", zout, writtenNames, buffer);
-                }
+            }
+            success = true;
+        } finally {
+            if (!success && dstZip != null && dstZip.exists()) {
+                try {
+                    dstZip.delete();
+                } catch (Exception ignored) {}
             }
         }
     }
