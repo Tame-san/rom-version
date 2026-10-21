@@ -125,6 +125,21 @@ This project is a dedicated, ultra-low-latency Android arcade player designed fo
   - `LAYOUT_BEATEMUP_2BUTTON`: Cadillacs & Dinosaurs, Punisher (Attack, Jump, combo zone).
 - **Just-In-Time Polling**: Touch pointer positions are updated atomically; `retro_set_input_state` samples current finger positions with 0 queued frames.
 
+### H. Monotonic Frame Pacer & 60 FPS Rate Limiter (`main.cpp` & `core_host.h`)
+- **Root Problem Solved**: Samsung Galaxy S25 Ultra operates at 120Hz AMOLED. In unthrottled render loops, `eglSwapBuffers` syncs to 120Hz VSYNC, forcing 60 FPS arcade games (Neo Geo, CPS1/2) to execute at 200% speed.
+- **Decision**: Implemented microsecond monotonic pacing using `std::chrono::steady_clock` and `std::this_thread::sleep_until(next_target)` tied directly to `av_info_.timing.fps` (~16,895 $\mu s$ for Neo Geo 59.1856Hz; ~16,666 $\mu s$ for 60Hz).
+- **Decision**: Implemented anti-debt accumulation: lagging frames or lifecycle transitions (`APP_CMD_GAINED_FOCUS`, `APP_CMD_RESUME`) reset the baseline timestamp to avoid catch-up bursts.
+
+### I. Glassmorphic Translucent Virtual HUD & Vector Glyphs (`renderer.cpp`)
+- **Root Problem Solved**: Virtual controls previously used opaque fills ($\alpha \ge 0.75-0.95$), heavily covering gameplay, meters, and fighter art. Buttons also lacked visible labels.
+- **Decision**: Converted all controls to translucent glassmorphism (D-pad fill $\alpha \approx 0.21$, action button body $\alpha \approx 0.25$ idle / $0.55$ pressed, top bar badges $\alpha \approx 0.30$ idle / $0.65$ active).
+- **Decision**: Implemented vector line quad font glyphs rendering 'A', 'B', 'C', 'D' (with 'LP', 'LK', 'HP', 'HK' sublabels), and crisp icons for 'COIN' (gold ring), 'START' (play triangle), and 'MENU' (hamburger bar).
+
+### J. Fast Root-Only ROM Normalization & Lifecycle Hardening (`RomNormalizer.java` & `AndroidManifest.xml`)
+- **Root Problem Solved**: Merged MAME ROMs like `kof97.zip` contain hundreds of bootlegs in subdirectories (`kof97s72/`, `kogd/`), ballooning archive size to 874MB. Decompressing and recompressing 874MB on flash storage took 45+ seconds and stalled the UI, while `standard` launch mode caused multi-instance race conditions in FBNeo.
+- **Decision**: `RomNormalizer.java` filters out subdirectories (`entry.isDirectory() || name.contains("/") || name.contains("\\")`), copying only the 13 canonical root MAME files (~35MB total). Normalization completes in $< 1$ second.
+- **Decision**: Configured `ArcadeActivity` with `android:launchMode="singleTask"` to prevent concurrent activity instances from corrupting global core state.
+
 ---
 
 ## 4. Verified Commands & Workflows
