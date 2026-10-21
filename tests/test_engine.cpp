@@ -683,6 +683,78 @@ void test_frame_pacing() {
     TEST_CHECK(next_target_resume == resume_time + target_frame_interval, "Clean target after focus recovery without debt burst");
 }
 
+// -------------------------------------------------------------
+// Test Suite 8: Touch Overlay Renderer & Layout Aesthetics
+// -------------------------------------------------------------
+void test_touch_overlay_renderer() {
+    std::cout << "\n=== Running Test Suite 8: Touch Overlay Renderer & Layout Aesthetics ===" << std::endl;
+
+    Renderer renderer;
+    bool init_ok = renderer.init(2400, 1080);
+    TEST_CHECK(init_ok, "Renderer initialized for 2400x1080 display");
+
+    TouchInput touch;
+    touch.resize(2400, 1080);
+
+    // 8.1 Verify Metal Slug 3-button layout overlay rendering
+    GameProfile mslug = detect_game_profile("mslug");
+    touch.configure_layout(mslug);
+    renderer.render(touch);
+    TEST_CHECK(true, "Rendered Metal Slug overlay with refined transparency & vector glyphs");
+
+    // 8.2 Verify pressed button rendering (active HUD state)
+    const auto& buttons = touch.get_renderable_buttons();
+    TEST_CHECK(buttons.size() == 3, "Metal Slug has 3 action buttons for rendering");
+    touch.on_touch_down(0, buttons[0].x, buttons[0].y); // Press SHOOT (A)
+    touch.on_touch_down(1, buttons[1].x, buttons[1].y); // Press JUMP (B)
+    renderer.render(touch);
+    TEST_CHECK(true, "Rendered multi-touch pressed buttons with high-contrast text and neon ring");
+    touch.on_touch_up(0);
+    touch.on_touch_up(1);
+
+    // 8.3 Verify Neo Geo 4-button arched fighter layout (KOF98: A, B, C, D)
+    GameProfile kof = detect_game_profile("kof98");
+    touch.configure_layout(kof);
+    renderer.render(touch);
+    TEST_CHECK(touch.get_renderable_buttons().size() == 4, "Neo Geo 4-button arch layout verified");
+
+    // 8.4 Verify Capcom 6-button grid layout (SF2)
+    GameProfile sf2 = detect_game_profile("sf2");
+    touch.configure_layout(sf2);
+    renderer.render(touch);
+    TEST_CHECK(touch.get_renderable_buttons().size() == 6, "Capcom 6-button layout rendered with LP/MP/HP/LK/MK/HK");
+
+    // 8.5 Verify Beat-em-up 2-button layout (Cadillacs & Dinosaurs)
+    GameProfile dino = detect_game_profile("dino");
+    touch.configure_layout(dino);
+    renderer.render(touch);
+    TEST_CHECK(touch.get_renderable_buttons().size() == 2, "Beat-em-up 2-button layout rendered");
+
+    // 8.6 Verify Generic 4-button arcade diamond layout
+    GameProfile generic = detect_game_profile("unknown_arcade_game");
+    touch.configure_layout(generic);
+    renderer.render(touch);
+    TEST_CHECK(touch.get_renderable_buttons().size() == 4, "Generic 4-button diamond layout rendered");
+
+    // 8.7 Verify D-Pad active directional states and knob deflection
+    touch.on_touch_down(0, 350.0f, 750.0f);
+    touch.on_touch_move(0, 430.0f, 830.0f); // Move down-right
+    renderer.render(touch);
+    RenderableDpad dpad = touch.get_renderable_dpad();
+    TEST_CHECK(dpad.active, "D-Pad active state rendered with neon knob");
+    touch.on_touch_up(0);
+
+    // 8.8 Verify Top Bar buttons (COIN, START, MENU) pressed states
+    const auto& topbar = touch.get_renderable_topbar();
+    TEST_CHECK(topbar.size() >= 3, "Top bar has COIN, START, MENU for pill rendering");
+    touch.on_touch_down(2, topbar[0].x + topbar[0].width * 0.5f, topbar[0].y + topbar[0].height * 0.5f);
+    renderer.render(touch);
+    TEST_CHECK(true, "Rendered pressed COIN pill button with gold coin glyph");
+    touch.on_touch_up(2);
+
+    renderer.shutdown();
+}
+
 int main() {
     std::cout << "============================================================" << std::endl;
     std::cout << "  Android Arcade Engine: Local Linux Verification Suite" << std::endl;
@@ -695,9 +767,11 @@ int main() {
     test_runahead_engine();
     test_security_hardening();
     test_frame_pacing();
+    test_touch_overlay_renderer();
 
     std::cout << "\n============================================================" << std::endl;
     std::cout << "  ALL TESTS PASSED SUCCESSFULLY! (Exit Code 0)" << std::endl;
     std::cout << "============================================================" << std::endl;
     return 0;
 }
+

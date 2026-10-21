@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <cctype>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -192,7 +193,7 @@ void Renderer::init_overlay_pipeline() {
 
     glBindVertexArray(overlay_vao_);
     glBindBuffer(GL_ARRAY_BUFFER, overlay_vbo_);
-    glBufferData(GL_ARRAY_BUFFER, 128 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 1024 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
@@ -315,6 +316,39 @@ void Renderer::draw_circle(float cx, float cy, float radius, uint32_t color_rgba
 #endif
 }
 
+void Renderer::draw_circle_ring(float cx, float cy, float inner_r, float outer_r, uint32_t color_rgba, float alpha_mult) {
+#ifdef __ANDROID__
+    if (inner_r < 0.0f) inner_r = 0.0f;
+    if (outer_r <= inner_r) return;
+
+    constexpr int SEGMENTS = 32;
+    float vertices[(SEGMENTS + 1) * 4];
+
+    for (int i = 0; i <= SEGMENTS; ++i) {
+        float angle = (float)i * 2.0f * 3.14159265f / (float)SEGMENTS;
+        float c = std::cos(angle);
+        float s = std::sin(angle);
+        vertices[i * 4 + 0] = cx + c * inner_r;
+        vertices[i * 4 + 1] = cy + s * inner_r;
+        vertices[i * 4 + 2] = cx + c * outer_r;
+        vertices[i * 4 + 3] = cy + s * outer_r;
+    }
+
+    float r = ((color_rgba >> 24) & 0xFF) / 255.0f;
+    float g = ((color_rgba >> 16) & 0xFF) / 255.0f;
+    float b = ((color_rgba >> 8) & 0xFF) / 255.0f;
+    float a = ((color_rgba) & 0xFF) / 255.0f * alpha_mult;
+
+    glUniform4f(u_overlay_color_loc_, r, g, b, a);
+
+    glBindBuffer(GL_ARRAY_BUFFER, overlay_vbo_);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, (SEGMENTS + 1) * 2);
+#else
+    (void)cx; (void)cy; (void)inner_r; (void)outer_r; (void)color_rgba; (void)alpha_mult;
+#endif
+}
+
 void Renderer::draw_rect(float x, float y, float w, float h, uint32_t color_rgba, float alpha_mult) {
 #ifdef __ANDROID__
     float vertices[8] = {
@@ -336,6 +370,292 @@ void Renderer::draw_rect(float x, float y, float w, float h, uint32_t color_rgba
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 #else
     (void)x; (void)y; (void)w; (void)h; (void)color_rgba; (void)alpha_mult;
+#endif
+}
+
+void Renderer::draw_line(float x1, float y1, float x2, float y2, float thickness, uint32_t color_rgba, float alpha_mult) {
+#ifdef __ANDROID__
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 0.0001f) return;
+
+    float nx = -dy / len * (thickness * 0.5f);
+    float ny =  dx / len * (thickness * 0.5f);
+
+    float ex = dx / len * (thickness * 0.25f);
+    float ey = dy / len * (thickness * 0.25f);
+
+    float sx = x1 - ex;
+    float sy = y1 - ey;
+    float ex_pt = x2 + ex;
+    float ey_pt = y2 + ey;
+
+    float vertices[8] = {
+        sx - nx, sy - ny,
+        sx + nx, sy + ny,
+        ex_pt - nx, ey_pt - ny,
+        ex_pt + nx, ey_pt + ny
+    };
+
+    float r = ((color_rgba >> 24) & 0xFF) / 255.0f;
+    float g = ((color_rgba >> 16) & 0xFF) / 255.0f;
+    float b = ((color_rgba >> 8) & 0xFF) / 255.0f;
+    float a = ((color_rgba) & 0xFF) / 255.0f * alpha_mult;
+
+    glUniform4f(u_overlay_color_loc_, r, g, b, a);
+
+    glBindBuffer(GL_ARRAY_BUFFER, overlay_vbo_);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+#else
+    (void)x1; (void)y1; (void)x2; (void)y2; (void)thickness; (void)color_rgba; (void)alpha_mult;
+#endif
+}
+
+void Renderer::draw_triangle(float x1, float y1, float x2, float y2, float x3, float y3, uint32_t color_rgba, float alpha_mult) {
+#ifdef __ANDROID__
+    float vertices[6] = {
+        x1, y1,
+        x2, y2,
+        x3, y3
+    };
+
+    float r = ((color_rgba >> 24) & 0xFF) / 255.0f;
+    float g = ((color_rgba >> 16) & 0xFF) / 255.0f;
+    float b = ((color_rgba >> 8) & 0xFF) / 255.0f;
+    float a = ((color_rgba) & 0xFF) / 255.0f * alpha_mult;
+
+    glUniform4f(u_overlay_color_loc_, r, g, b, a);
+
+    glBindBuffer(GL_ARRAY_BUFFER, overlay_vbo_);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+#else
+    (void)x1; (void)y1; (void)x2; (void)y2; (void)x3; (void)y3; (void)color_rgba; (void)alpha_mult;
+#endif
+}
+
+void Renderer::draw_vector_char(char c, float cx, float cy, float w, float h, float thickness, uint32_t color_rgba, float alpha_mult) {
+#ifdef __ANDROID__
+    float x0 = cx - w * 0.5f;
+    float y0 = cy - h * 0.5f;
+
+    auto seg = [&](float u1, float v1, float u2, float v2) {
+        draw_line(x0 + u1 * w, y0 + v1 * h, x0 + u2 * w, y0 + v2 * h, thickness, color_rgba, alpha_mult);
+    };
+
+    char upper = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    switch (upper) {
+        case 'A':
+            seg(0.12f, 1.0f, 0.50f, 0.0f);
+            seg(0.50f, 0.0f, 0.88f, 1.0f);
+            seg(0.25f, 0.62f, 0.75f, 0.62f);
+            break;
+        case 'B':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.18f, 0.0f, 0.65f, 0.0f);
+            seg(0.65f, 0.0f, 0.82f, 0.25f);
+            seg(0.82f, 0.25f, 0.65f, 0.50f);
+            seg(0.18f, 0.50f, 0.65f, 0.50f);
+            seg(0.65f, 0.50f, 0.85f, 0.75f);
+            seg(0.85f, 0.75f, 0.65f, 1.0f);
+            seg(0.18f, 1.0f, 0.65f, 1.0f);
+            break;
+        case 'C':
+            seg(0.85f, 0.15f, 0.45f, 0.0f);
+            seg(0.45f, 0.0f, 0.18f, 0.25f);
+            seg(0.18f, 0.25f, 0.18f, 0.75f);
+            seg(0.18f, 0.75f, 0.45f, 1.0f);
+            seg(0.45f, 1.0f, 0.85f, 0.85f);
+            break;
+        case 'D':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.18f, 0.0f, 0.55f, 0.0f);
+            seg(0.55f, 0.0f, 0.82f, 0.28f);
+            seg(0.82f, 0.28f, 0.82f, 0.72f);
+            seg(0.82f, 0.72f, 0.55f, 1.0f);
+            seg(0.18f, 1.0f, 0.55f, 1.0f);
+            break;
+        case 'E':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.18f, 0.0f, 0.82f, 0.0f);
+            seg(0.18f, 0.50f, 0.68f, 0.50f);
+            seg(0.18f, 1.0f, 0.82f, 1.0f);
+            break;
+        case 'F':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.18f, 0.0f, 0.82f, 0.0f);
+            seg(0.18f, 0.50f, 0.65f, 0.50f);
+            break;
+        case 'G':
+            seg(0.85f, 0.15f, 0.45f, 0.0f);
+            seg(0.45f, 0.0f, 0.18f, 0.25f);
+            seg(0.18f, 0.25f, 0.18f, 0.75f);
+            seg(0.18f, 0.75f, 0.45f, 1.0f);
+            seg(0.45f, 1.0f, 0.82f, 1.0f);
+            seg(0.82f, 1.0f, 0.82f, 0.50f);
+            seg(0.50f, 0.50f, 0.82f, 0.50f);
+            break;
+        case 'H':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.82f, 0.0f, 0.82f, 1.0f);
+            seg(0.18f, 0.50f, 0.82f, 0.50f);
+            break;
+        case 'I':
+            seg(0.50f, 0.0f, 0.50f, 1.0f);
+            seg(0.25f, 0.0f, 0.75f, 0.0f);
+            seg(0.25f, 1.0f, 0.75f, 1.0f);
+            break;
+        case 'J':
+            seg(0.30f, 0.0f, 0.80f, 0.0f);
+            seg(0.68f, 0.0f, 0.68f, 0.75f);
+            seg(0.68f, 0.75f, 0.45f, 1.0f);
+            seg(0.45f, 1.0f, 0.20f, 0.80f);
+            seg(0.20f, 0.80f, 0.18f, 0.60f);
+            break;
+        case 'K':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.82f, 0.0f, 0.18f, 0.55f);
+            seg(0.35f, 0.42f, 0.82f, 1.0f);
+            break;
+        case 'L':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.18f, 1.0f, 0.82f, 1.0f);
+            break;
+        case 'M':
+            seg(0.18f, 1.0f, 0.18f, 0.0f);
+            seg(0.18f, 0.0f, 0.50f, 0.55f);
+            seg(0.50f, 0.55f, 0.82f, 0.0f);
+            seg(0.82f, 0.0f, 0.82f, 1.0f);
+            break;
+        case 'N':
+            seg(0.18f, 1.0f, 0.18f, 0.0f);
+            seg(0.18f, 0.0f, 0.82f, 1.0f);
+            seg(0.82f, 1.0f, 0.82f, 0.0f);
+            break;
+        case 'O':
+            seg(0.35f, 0.0f, 0.65f, 0.0f);
+            seg(0.65f, 0.0f, 0.82f, 0.22f);
+            seg(0.82f, 0.22f, 0.82f, 0.78f);
+            seg(0.82f, 0.78f, 0.65f, 1.0f);
+            seg(0.65f, 1.0f, 0.35f, 1.0f);
+            seg(0.35f, 1.0f, 0.18f, 0.78f);
+            seg(0.18f, 0.78f, 0.18f, 0.22f);
+            seg(0.18f, 0.22f, 0.35f, 0.0f);
+            break;
+        case 'P':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.18f, 0.0f, 0.65f, 0.0f);
+            seg(0.65f, 0.0f, 0.82f, 0.25f);
+            seg(0.82f, 0.25f, 0.65f, 0.50f);
+            seg(0.18f, 0.50f, 0.65f, 0.50f);
+            break;
+        case 'R':
+            seg(0.18f, 0.0f, 0.18f, 1.0f);
+            seg(0.18f, 0.0f, 0.65f, 0.0f);
+            seg(0.65f, 0.0f, 0.82f, 0.25f);
+            seg(0.82f, 0.25f, 0.65f, 0.50f);
+            seg(0.18f, 0.50f, 0.65f, 0.50f);
+            seg(0.48f, 0.50f, 0.82f, 1.0f);
+            break;
+        case 'S':
+            seg(0.82f, 0.15f, 0.60f, 0.0f);
+            seg(0.60f, 0.0f, 0.35f, 0.0f);
+            seg(0.35f, 0.0f, 0.18f, 0.20f);
+            seg(0.18f, 0.20f, 0.30f, 0.48f);
+            seg(0.30f, 0.48f, 0.70f, 0.52f);
+            seg(0.70f, 0.52f, 0.82f, 0.78f);
+            seg(0.82f, 0.78f, 0.65f, 1.0f);
+            seg(0.65f, 1.0f, 0.35f, 1.0f);
+            seg(0.35f, 1.0f, 0.18f, 0.85f);
+            break;
+        case 'T':
+            seg(0.10f, 0.0f, 0.90f, 0.0f);
+            seg(0.50f, 0.0f, 0.50f, 1.0f);
+            break;
+        case 'U':
+            seg(0.18f, 0.0f, 0.18f, 0.75f);
+            seg(0.18f, 0.75f, 0.40f, 1.0f);
+            seg(0.40f, 1.0f, 0.60f, 1.0f);
+            seg(0.60f, 1.0f, 0.82f, 0.75f);
+            seg(0.82f, 0.75f, 0.82f, 0.0f);
+            break;
+        case 'V':
+            seg(0.18f, 0.0f, 0.50f, 1.0f);
+            seg(0.50f, 1.0f, 0.82f, 0.0f);
+            break;
+        case 'W':
+            seg(0.15f, 0.0f, 0.25f, 1.0f);
+            seg(0.25f, 1.0f, 0.50f, 0.35f);
+            seg(0.50f, 0.35f, 0.75f, 1.0f);
+            seg(0.75f, 1.0f, 0.85f, 0.0f);
+            break;
+        case 'X':
+            seg(0.18f, 0.0f, 0.82f, 1.0f);
+            seg(0.82f, 0.0f, 0.18f, 1.0f);
+            break;
+        case 'Y':
+            seg(0.18f, 0.0f, 0.50f, 0.50f);
+            seg(0.82f, 0.0f, 0.50f, 0.50f);
+            seg(0.50f, 0.50f, 0.50f, 1.0f);
+            break;
+        case 'Z':
+            seg(0.18f, 0.0f, 0.82f, 0.0f);
+            seg(0.82f, 0.0f, 0.18f, 1.0f);
+            seg(0.18f, 1.0f, 0.82f, 1.0f);
+            break;
+        case '1':
+            seg(0.30f, 0.22f, 0.50f, 0.0f);
+            seg(0.50f, 0.0f, 0.50f, 1.0f);
+            seg(0.25f, 1.0f, 0.75f, 1.0f);
+            break;
+        case '2':
+            seg(0.18f, 0.25f, 0.40f, 0.0f);
+            seg(0.40f, 0.0f, 0.75f, 0.0f);
+            seg(0.75f, 0.0f, 0.82f, 0.25f);
+            seg(0.82f, 0.25f, 0.18f, 1.0f);
+            seg(0.18f, 1.0f, 0.82f, 1.0f);
+            break;
+        case '3':
+            seg(0.18f, 0.0f, 0.82f, 0.0f);
+            seg(0.82f, 0.0f, 0.45f, 0.45f);
+            seg(0.45f, 0.45f, 0.75f, 0.50f);
+            seg(0.75f, 0.50f, 0.82f, 0.75f);
+            seg(0.82f, 0.75f, 0.60f, 1.0f);
+            seg(0.60f, 1.0f, 0.18f, 1.0f);
+            break;
+        case '4':
+            seg(0.72f, 0.0f, 0.72f, 1.0f);
+            seg(0.72f, 0.0f, 0.18f, 0.65f);
+            seg(0.18f, 0.65f, 0.85f, 0.65f);
+            break;
+        case ' ':
+            break;
+        default:
+            seg(0.45f, 0.45f, 0.55f, 0.55f);
+            break;
+    }
+#else
+    (void)c; (void)cx; (void)cy; (void)w; (void)h; (void)thickness; (void)color_rgba; (void)alpha_mult;
+#endif
+}
+
+void Renderer::draw_vector_text(const std::string& text, float cx, float cy, float char_h, float thickness, uint32_t color_rgba, float alpha_mult) {
+#ifdef __ANDROID__
+    if (text.empty() || char_h <= 0.0f) return;
+
+    float char_w = char_h * 0.62f;
+    float spacing = char_h * 0.16f;
+    float total_w = (float)text.length() * char_w + (float)(text.length() - 1) * spacing;
+    float start_x = cx - total_w * 0.5f + char_w * 0.5f;
+
+    for (size_t i = 0; i < text.length(); ++i) {
+        float cur_x = start_x + (float)i * (char_w + spacing);
+        draw_vector_char(text[i], cur_x, cy, char_w, char_h, thickness, color_rgba, alpha_mult);
+    }
+#else
+    (void)text; (void)cx; (void)cy; (void)char_h; (void)thickness; (void)color_rgba; (void)alpha_mult;
 #endif
 }
 
@@ -380,37 +700,177 @@ void Renderer::render_touch_overlay(const TouchInput& touch_input) {
 
     // 1. Render Virtual D-Pad
     RenderableDpad dpad = touch_input.get_renderable_dpad();
-    // Outer base circle
-    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius, 0x2A2A3ACC, 0.75f);
-    // Outer neon border
-    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius * 0.97f, 0x00E5FFCC, 0.85f);
-    // Inner base fill
-    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius * 0.92f, 0x1A1A24CC, 0.80f);
-    // Inner thumb knob (bright neon cyan when active, crisp silver when idle)
-    uint32_t knob_color = dpad.active ? 0x00FFFFFF : 0xDDDDDDFF;
-    draw_circle(dpad.knob_x, dpad.knob_y, dpad.knob_radius, knob_color, dpad.active ? 1.0f : 0.85f);
-    draw_circle(dpad.knob_x, dpad.knob_y, dpad.knob_radius * 0.4f, 0x00E5FFFF, 0.95f);
+
+    // Outer neon rim (alpha ~0.35f - 0.40f)
+    draw_circle_ring(dpad.center_x, dpad.center_y, dpad.base_radius * 0.94f, dpad.base_radius, 0x00E5FFFF, 0.38f);
+
+    // Outer base subtle fill (alpha ~0.20f - 0.22f)
+    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius * 0.94f, 0x1E2232FF, 0.21f);
+
+    // Inner base fill (alpha ~0.15f - 0.20f)
+    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius * 0.72f, 0x121420FF, 0.17f);
+    draw_circle_ring(dpad.center_x, dpad.center_y, dpad.base_radius * 0.70f, dpad.base_radius * 0.72f, 0x00E5FFFF, 0.25f);
+
+    // Cardinal directional arrows (UP, DOWN, LEFT, RIGHT)
+    float arrow_dist = dpad.base_radius * 0.52f;
+    float arrow_size = dpad.base_radius * 0.12f;
+
+    // UP
+    bool up_active = (dpad.active_directions & (1 << RETRO_DEVICE_ID_JOYPAD_UP)) != 0;
+    draw_triangle(
+        dpad.center_x, dpad.center_y - arrow_dist - arrow_size * 0.6f,
+        dpad.center_x - arrow_size * 0.7f, dpad.center_y - arrow_dist + arrow_size * 0.6f,
+        dpad.center_x + arrow_size * 0.7f, dpad.center_y - arrow_dist + arrow_size * 0.6f,
+        up_active ? 0x00FFFFFF : 0x88A0B8FF, up_active ? 0.85f : 0.25f
+    );
+
+    // DOWN
+    bool down_active = (dpad.active_directions & (1 << RETRO_DEVICE_ID_JOYPAD_DOWN)) != 0;
+    draw_triangle(
+        dpad.center_x, dpad.center_y + arrow_dist + arrow_size * 0.6f,
+        dpad.center_x - arrow_size * 0.7f, dpad.center_y + arrow_dist - arrow_size * 0.6f,
+        dpad.center_x + arrow_size * 0.7f, dpad.center_y + arrow_dist - arrow_size * 0.6f,
+        down_active ? 0x00FFFFFF : 0x88A0B8FF, down_active ? 0.85f : 0.25f
+    );
+
+    // LEFT
+    bool left_active = (dpad.active_directions & (1 << RETRO_DEVICE_ID_JOYPAD_LEFT)) != 0;
+    draw_triangle(
+        dpad.center_x - arrow_dist - arrow_size * 0.6f, dpad.center_y,
+        dpad.center_x - arrow_dist + arrow_size * 0.6f, dpad.center_y - arrow_size * 0.7f,
+        dpad.center_x - arrow_dist + arrow_size * 0.6f, dpad.center_y + arrow_size * 0.7f,
+        left_active ? 0x00FFFFFF : 0x88A0B8FF, left_active ? 0.85f : 0.25f
+    );
+
+    // RIGHT
+    bool right_active = (dpad.active_directions & (1 << RETRO_DEVICE_ID_JOYPAD_RIGHT)) != 0;
+    draw_triangle(
+        dpad.center_x + arrow_dist + arrow_size * 0.6f, dpad.center_y,
+        dpad.center_x + arrow_dist - arrow_size * 0.6f, dpad.center_y - arrow_size * 0.7f,
+        dpad.center_x + arrow_dist - arrow_size * 0.6f, dpad.center_y + arrow_size * 0.7f,
+        right_active ? 0x00FFFFFF : 0x88A0B8FF, right_active ? 0.85f : 0.25f
+    );
+
+    // D-Pad knob: sleek translucent disc (alpha ~0.30f when idle, ~0.60f when active)
+    float knob_alpha = dpad.active ? 0.60f : 0.30f;
+    uint32_t knob_color = dpad.active ? 0x00C8FFFF : 0xCBD5E1FF;
+
+    // Knob neon boundary ring
+    draw_circle_ring(dpad.knob_x, dpad.knob_y, dpad.knob_radius * 0.88f, dpad.knob_radius, 0x00E5FFFF, dpad.active ? 0.85f : 0.45f);
+    // Knob body
+    draw_circle(dpad.knob_x, dpad.knob_y, dpad.knob_radius * 0.88f, knob_color, knob_alpha);
+    // Knob center accent
+    draw_circle(dpad.knob_x, dpad.knob_y, dpad.knob_radius * 0.38f, 0xFFFFFFFF, dpad.active ? 0.50f : 0.25f);
 
     // 2. Render Action Buttons
     const auto& buttons = touch_input.get_renderable_buttons();
     for (const auto& btn : buttons) {
-        float alpha = btn.pressed ? 1.0f : 0.85f;
-        float radius = btn.pressed ? (btn.radius * 0.93f) : btn.radius;
-        // Outer glow/ring
-        draw_circle(btn.x, btn.y, radius * 1.08f, 0xFFFFFF66, 0.6f);
-        // Button body
-        draw_circle(btn.x, btn.y, radius, btn.color_rgba, alpha);
-        // Inner core highlight
-        draw_circle(btn.x, btn.y, radius * 0.38f, 0xFFFFFFFF, alpha * 0.9f);
+        float body_alpha = btn.pressed ? 0.55f : 0.25f;
+        float ring_alpha = btn.pressed ? 0.85f : 0.45f;
+        float highlight_alpha = btn.pressed ? 0.60f : 0.25f;
+        float text_alpha = btn.pressed ? 0.98f : 0.85f;
+
+        float radius = btn.pressed ? (btn.radius * 0.94f) : btn.radius;
+
+        // Outer neon boundary ring: alpha = btn.pressed ? 0.85f : 0.45f
+        draw_circle_ring(btn.x, btn.y, radius * 0.94f, radius * 1.05f, btn.color_rgba, ring_alpha);
+
+        // Translucent glassmorphic body: alpha = btn.pressed ? 0.55f : 0.25f
+        draw_circle(btn.x, btn.y, radius * 0.94f, btn.color_rgba, body_alpha);
+
+        // Inner highlight: subtle alpha btn.pressed ? 0.60f : 0.25f
+        draw_circle(btn.x, btn.y - radius * 0.25f, radius * 0.35f, 0xFFFFFFFF, highlight_alpha);
+
+        // Vector labels / glyphs
+        if (!btn.sublabel.empty() && (btn.sublabel == "A" || btn.sublabel == "B" || btn.sublabel == "C" || btn.sublabel == "D")) {
+            // Metal Slug style: sublabel is "A", "B", "C", label is "SHOOT", "JUMP", "BOMB"
+            draw_vector_text(btn.sublabel, btn.x, btn.y - radius * 0.18f, radius * 0.58f, std::max(2.5f, radius * 0.08f), 0xFFFFFFFF, text_alpha);
+            draw_vector_text(btn.label, btn.x, btn.y + radius * 0.42f, radius * 0.26f, std::max(2.0f, radius * 0.045f), 0xFFFFFFFF, text_alpha * 0.90f);
+        } else if (!btn.sublabel.empty() && (btn.label == "A" || btn.label == "B" || btn.label == "C" || btn.label == "D")) {
+            // Neo Geo 4-button fighter style: label is "A", "B", "C", "D", sublabel is "LP", "LK", etc.
+            draw_vector_text(btn.label, btn.x, btn.y - radius * 0.15f, radius * 0.65f, std::max(2.5f, radius * 0.09f), 0xFFFFFFFF, text_alpha);
+            draw_vector_text(btn.sublabel, btn.x, btn.y + radius * 0.44f, radius * 0.26f, std::max(2.0f, radius * 0.045f), 0xFFFFFFFF, text_alpha * 0.90f);
+        } else if (btn.label.length() <= 2) {
+            // Short label like "LP", "MP", "HP", "LK", "A", etc.
+            if (!btn.sublabel.empty()) {
+                draw_vector_text(btn.label, btn.x, btn.y - radius * 0.14f, radius * 0.55f, std::max(2.5f, radius * 0.08f), 0xFFFFFFFF, text_alpha);
+                draw_vector_text(btn.sublabel, btn.x, btn.y + radius * 0.42f, radius * 0.26f, std::max(2.0f, radius * 0.045f), 0xFFFFFFFF, text_alpha * 0.85f);
+            } else {
+                draw_vector_text(btn.label, btn.x, btn.y, radius * 0.65f, std::max(2.5f, radius * 0.09f), 0xFFFFFFFF, text_alpha);
+            }
+        } else {
+            // Longer label like "ATTACK", "JUMP"
+            draw_vector_text(btn.label, btn.x, btn.y, radius * 0.32f, std::max(2.0f, radius * 0.05f), 0xFFFFFFFF, text_alpha);
+        }
     }
 
     // 3. Render Top Bar Buttons (Coin, Start, Menu)
     const auto& topbar = touch_input.get_renderable_topbar();
     for (const auto& tb : topbar) {
-        float alpha = tb.pressed ? 1.0f : 0.85f;
-        uint32_t bg_color = tb.is_menu_trigger ? 0xE65100EE : 0x1E88E5EE;
-        draw_rect(tb.x - 2, tb.y - 2, tb.width + 4, tb.height + 4, 0xFFFFFF88, 0.8f);
-        draw_rect(tb.x, tb.y, tb.width, tb.height, bg_color, alpha);
+        float alpha = tb.pressed ? 0.65f : 0.30f;
+        float border_alpha = tb.pressed ? 0.70f : 0.45f;
+        uint32_t bg_color = tb.is_menu_trigger ? 0xE65100FF : 0x1E88E5FF;
+
+        float pill_radius = tb.height * 0.5f;
+
+        // Subtle outer border: alpha ~0.45f
+        float b_thick = 1.8f;
+        draw_circle(tb.x + pill_radius, tb.y + pill_radius, pill_radius + b_thick, 0xFFFFFFFF, border_alpha);
+        draw_circle(tb.x + tb.width - pill_radius, tb.y + pill_radius, pill_radius + b_thick, 0xFFFFFFFF, border_alpha);
+        draw_rect(tb.x + pill_radius, tb.y - b_thick, tb.width - 2.0f * pill_radius, tb.height + 2.0f * b_thick, 0xFFFFFFFF, border_alpha);
+
+        // Translucent pill background: alpha = tb.pressed ? 0.65f : 0.30f
+        draw_circle(tb.x + pill_radius, tb.y + pill_radius, pill_radius, bg_color, alpha);
+        draw_circle(tb.x + tb.width - pill_radius, tb.y + pill_radius, pill_radius, bg_color, alpha);
+        draw_rect(tb.x + pill_radius, tb.y, tb.width - 2.0f * pill_radius, tb.height, bg_color, alpha);
+
+        // Top edge glass highlight
+        draw_rect(tb.x + pill_radius, tb.y + 2.0f, tb.width - 2.0f * pill_radius, tb.height * 0.22f, 0xFFFFFFFF, alpha * 0.35f);
+
+        float cy = tb.y + tb.height * 0.5f;
+        float text_alpha = tb.pressed ? 0.98f : 0.85f;
+
+        if (tb.label == "COIN") {
+            // Coin Button: icon + label
+            float icon_cx = tb.x + pill_radius * 0.95f;
+            float coin_r = pill_radius * 0.52f;
+            draw_circle_ring(icon_cx, cy, coin_r * 0.70f, coin_r, 0xFFD700FF, text_alpha);
+            draw_vector_char('C', icon_cx, cy, coin_r * 0.95f, coin_r * 0.95f, 2.0f, 0xFFFFFFFF, text_alpha);
+
+            // Label "COIN"
+            float label_x = tb.x + pill_radius * 1.55f + (tb.width - pill_radius * 2.0f) * 0.40f;
+            draw_vector_text("COIN", label_x, cy, tb.height * 0.38f, std::max(2.0f, tb.height * 0.055f), 0xFFFFFFFF, text_alpha);
+        } else if (tb.label == "START") {
+            // Start Button: play triangle + label
+            float icon_cx = tb.x + pill_radius * 0.95f;
+            float tri_h = pill_radius * 0.50f;
+            draw_triangle(
+                icon_cx - tri_h * 0.45f, cy - tri_h,
+                icon_cx - tri_h * 0.45f, cy + tri_h,
+                icon_cx + tri_h * 0.75f, cy,
+                0x00FF88FF, text_alpha
+            );
+
+            // Label "START"
+            float label_x = tb.x + pill_radius * 1.55f + (tb.width - pill_radius * 2.0f) * 0.42f;
+            draw_vector_text("START", label_x, cy, tb.height * 0.38f, std::max(2.0f, tb.height * 0.055f), 0xFFFFFFFF, text_alpha);
+        } else if (tb.label == "MENU") {
+            // Menu Button: 3 horizontal bars + label
+            float icon_cx = tb.x + pill_radius * 0.90f;
+            float bar_w = pill_radius * 0.65f;
+            float bar_th = std::max(2.0f, tb.height * 0.055f);
+            float bar_gap = tb.height * 0.16f;
+
+            draw_line(icon_cx - bar_w * 0.5f, cy - bar_gap, icon_cx + bar_w * 0.5f, cy - bar_gap, bar_th, 0xFFFFFFFF, text_alpha);
+            draw_line(icon_cx - bar_w * 0.5f, cy,           icon_cx + bar_w * 0.5f, cy,           bar_th, 0xFFFFFFFF, text_alpha);
+            draw_line(icon_cx - bar_w * 0.5f, cy + bar_gap, icon_cx + bar_w * 0.5f, cy + bar_gap, bar_th, 0xFFFFFFFF, text_alpha);
+
+            // Label "MENU"
+            float label_x = tb.x + pill_radius * 1.50f + (tb.width - pill_radius * 2.0f) * 0.40f;
+            draw_vector_text("MENU", label_x, cy, tb.height * 0.38f, std::max(2.0f, tb.height * 0.055f), 0xFFFFFFFF, text_alpha);
+        } else {
+            draw_vector_text(tb.label, tb.x + tb.width * 0.5f, cy, tb.height * 0.40f, std::max(2.0f, tb.height * 0.06f), 0xFFFFFFFF, text_alpha);
+        }
     }
 
     glBindVertexArray(0);
@@ -420,6 +880,7 @@ void Renderer::render_touch_overlay(const TouchInput& touch_input) {
     (void)touch_input;
 #endif
 }
+
 
 void Renderer::render_splash_screen() {
 #ifdef __ANDROID__

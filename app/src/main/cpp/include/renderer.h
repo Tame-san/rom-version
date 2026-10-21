@@ -75,7 +75,12 @@ private:
     void render_splash_screen();
     void render_touch_overlay(const TouchInput& touch_input);
     void draw_circle(float cx, float cy, float radius, uint32_t color_rgba, float alpha_mult = 1.0f);
+    void draw_circle_ring(float cx, float cy, float inner_r, float outer_r, uint32_t color_rgba, float alpha_mult = 1.0f);
     void draw_rect(float x, float y, float w, float h, uint32_t color_rgba, float alpha_mult = 1.0f);
+    void draw_line(float x1, float y1, float x2, float y2, float thickness, uint32_t color_rgba, float alpha_mult = 1.0f);
+    void draw_triangle(float x1, float y1, float x2, float y2, float x3, float y3, uint32_t color_rgba, float alpha_mult = 1.0f);
+    void draw_vector_char(char c, float cx, float cy, float w, float h, float thickness, uint32_t color_rgba, float alpha_mult = 1.0f);
+    void draw_vector_text(const std::string& text, float cx, float cy, float char_h, float thickness, uint32_t color_rgba, float alpha_mult = 1.0f);
 
     int screen_w_ = 1920;
     int screen_h_ = 1080;
