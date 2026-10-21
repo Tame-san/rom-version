@@ -6,8 +6,10 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.ArrayAdapter;
+import android.view.ViewGroup;
+import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -31,25 +33,82 @@ public class MainActivity extends Activity {
     private TextView tvRomStatus;
     private Button btnSelectRom;
     private Button btnSelectFolder;
-    private Button btnQuickMetalSlug;
     private ListView lvGames;
 
     private List<GameItem> gameList = new ArrayList<>();
-    private ArrayAdapter<String> listAdapter;
-    private List<String> displayNames = new ArrayList<>();
+    private GameAdapter gameAdapter;
 
     private static class GameItem {
         String name;
         String fileName;
         Uri uri;
         String localPath;
+        String systemTag;
 
-        GameItem(String name, String fileName, Uri uri, String localPath) {
+        GameItem(String name, String fileName, Uri uri, String localPath, String systemTag) {
             this.name = name;
             this.fileName = fileName;
             this.uri = uri;
             this.localPath = localPath;
+            this.systemTag = systemTag;
         }
+    }
+
+    private class GameAdapter extends BaseAdapter {
+        private final LayoutInflater inflater;
+
+        GameAdapter() {
+            this.inflater = LayoutInflater.from(MainActivity.this);
+        }
+
+        @Override
+        public int getCount() {
+            return gameList.size();
+        }
+
+        @Override
+        public GameItem getItem(int position) {
+            return gameList.get(position);
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            ViewHolder holder;
+            if (convertView == null) {
+                convertView = inflater.inflate(R.layout.item_game, parent, false);
+                holder = new ViewHolder();
+                holder.title = convertView.findViewById(R.id.tv_game_title);
+                holder.system = convertView.findViewById(R.id.tv_game_system);
+                holder.filename = convertView.findViewById(R.id.tv_game_filename);
+                holder.playBtn = convertView.findViewById(R.id.tv_play_btn);
+                convertView.setTag(holder);
+            } else {
+                holder = (ViewHolder) convertView.getTag();
+            }
+
+            GameItem item = getItem(position);
+            holder.title.setText(item.name);
+            holder.system.setText(item.systemTag);
+            holder.filename.setText(item.fileName);
+
+            View.OnClickListener clickListener = v -> launchGameItem(item);
+            convertView.setOnClickListener(clickListener);
+            holder.playBtn.setOnClickListener(clickListener);
+
+            return convertView;
+        }
+    }
+
+    private static class ViewHolder {
+        TextView title;
+        TextView system;
+        TextView filename;
+        TextView playBtn;
     }
 
     @Override
@@ -61,15 +120,13 @@ public class MainActivity extends Activity {
         tvRomStatus = findViewById(R.id.tv_rom_status);
         btnSelectRom = findViewById(R.id.btn_select_rom);
         btnSelectFolder = findViewById(R.id.btn_select_folder);
-        btnQuickMetalSlug = findViewById(R.id.btn_quick_metal_slug);
         lvGames = findViewById(R.id.lv_games);
 
-        listAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, displayNames);
-        lvGames.setAdapter(listAdapter);
+        gameAdapter = new GameAdapter();
+        lvGames.setAdapter(gameAdapter);
 
         btnSelectRom.setOnClickListener(v -> openFilePicker());
         btnSelectFolder.setOnClickListener(v -> openFolderPicker());
-        btnQuickMetalSlug.setOnClickListener(v -> quickLaunchMetalSlug());
 
         lvGames.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < gameList.size()) {
@@ -234,24 +291,51 @@ public class MainActivity extends Activity {
         return false;
     }
 
-    private boolean isNeoGeoRom(String fileName) {
-        if (fileName == null) return false;
+    private static String detectSystem(String fileName) {
+        if (fileName == null) return "ARCADE";
         String base = fileName.toLowerCase().replace(".zip", "");
-        return base.startsWith("mslug") || base.startsWith("kof") || base.startsWith("garou") ||
-               base.startsWith("lastbld") || base.startsWith("samsho") || base.startsWith("rbff") ||
-               base.startsWith("sengoku") || base.startsWith("wjammers") || base.startsWith("spinmast") ||
-               base.startsWith("nam1975") || base.startsWith("fatfur") || base.startsWith("aof") ||
-               base.startsWith("neogal");
+        String[] neoGeoPrefixes = {
+            "mslug", "kof", "garou", "lastbld", "samsho", "rbff", "sengoku",
+            "wjammers", "spinmast", "nam1975", "fatfur", "aof", "neogal"
+        };
+        for (String prefix : neoGeoPrefixes) {
+            if (base.startsWith(prefix)) return "NEO GEO";
+        }
+        String[] cps1Prefixes = {
+            "sf2", "dino", "punisher", "cworld2", "ffight", "ghouls", "strider",
+            "mercs", "captcomm"
+        };
+        for (String prefix : cps1Prefixes) {
+            if (base.startsWith(prefix)) return "CPS-1";
+        }
+        String[] cps2Prefixes = {
+            "sfa", "sfa2", "sfa3", "vsav", "mvsc", "xmcota", "msh", "mshvsf",
+            "xmvsf", "dstlk", "nwarr", "progear", "1944", "ddsom", "ddtod"
+        };
+        for (String prefix : cps2Prefixes) {
+            if (base.startsWith(prefix)) return "CPS-2";
+        }
+        String[] pgmPrefixes = {
+            "martmast", "kov", "orlegend", "svg"
+        };
+        for (String prefix : pgmPrefixes) {
+            if (base.startsWith(prefix)) return "PGM";
+        }
+        return "ARCADE";
+    }
+
+    private boolean isNeoGeoRom(String fileName) {
+        return "NEO GEO".equals(detectSystem(fileName));
     }
 
     private void updateBiosStatus() {
         ensureBiosSynchronized();
         if (isBiosPresent()) {
             tvBiosStatus.setText("✓ Neo Geo BIOS: Ready (neogeo.zip active)");
-            tvBiosStatus.setTextColor(0xFF00E676); // Bright green
+            tvBiosStatus.setTextColor(0xFF34D399); // status_green
         } else {
             tvBiosStatus.setText("⚠ Neo Geo BIOS: Not found (Tap to install neogeo.zip)");
-            tvBiosStatus.setTextColor(0xFFFFB300); // Amber
+            tvBiosStatus.setTextColor(0xFFE8A702); // accent_gold
             tvBiosStatus.setOnClickListener(v -> openFilePicker());
         }
     }
@@ -370,16 +454,14 @@ public class MainActivity extends Activity {
 
             runOnUiThread(() -> {
                 gameList.clear();
-                displayNames.clear();
 
                 for (DocumentFile f : zipFiles) {
                     String name = f.getName();
                     String friendly = formatFriendlyName(name);
-                    gameList.add(new GameItem(friendly, name, f.getUri(), null));
-                    displayNames.add(friendly);
+                    gameList.add(new GameItem(friendly, name, f.getUri(), null, detectSystem(name)));
                 }
 
-                listAdapter.notifyDataSetChanged();
+                gameAdapter.notifyDataSetChanged();
                 updateBiosStatus();
                 tvRomStatus.setText("Found " + gameList.size() + " arcade game(s) in selected folder");
             });
@@ -402,11 +484,10 @@ public class MainActivity extends Activity {
                 }
             }
             if (!exists) {
-                gameList.add(new GameItem(friendly, name, null, f.getAbsolutePath()));
-                displayNames.add(friendly);
+                gameList.add(new GameItem(friendly, name, null, f.getAbsolutePath(), detectSystem(name)));
             }
         }
-        listAdapter.notifyDataSetChanged();
+        gameAdapter.notifyDataSetChanged();
     }
 
     private void scanCommonPhonePaths() {
@@ -445,11 +526,10 @@ public class MainActivity extends Activity {
                             }
                         }
                         if (!exists) {
-                            gameList.add(new GameItem(friendly, name, null, z.getAbsolutePath()));
-                            displayNames.add(friendly);
+                            gameList.add(new GameItem(friendly, name, null, z.getAbsolutePath(), detectSystem(name)));
                         }
                     }
-                    listAdapter.notifyDataSetChanged();
+                    gameAdapter.notifyDataSetChanged();
                     tvRomStatus.setText("Found " + gameList.size() + " arcade game(s) in " + dir.getName());
                     updateBiosStatus();
                     break;
@@ -507,44 +587,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private void quickLaunchMetalSlug() {
-        Toast.makeText(this, "Preparing Metal Slug...", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            File localMslug = new File(getRomsDir(), "mslug.zip");
-            File foundFile = null;
-            if (localMslug.exists() && localMslug.length() > 1000) {
-                foundFile = localMslug;
-            } else {
-                String[] candidates = {
-                    "/sdcard/Download/Roms/mslug.zip",
-                    "/storage/emulated/0/Download/Roms/mslug.zip",
-                    "/sdcard/roms/mslug.zip",
-                    "/storage/emulated/0/roms/mslug.zip",
-                    "/sdcard/Download/roms/mslug.zip",
-                    "/storage/emulated/0/Download/roms/mslug.zip",
-                    "/sdcard/Download/mslug.zip",
-                    "/storage/emulated/0/Download/mslug.zip"
-                };
-                for (String c : candidates) {
-                    File f = new File(c);
-                    if (f.exists() && f.canRead()) {
-                        foundFile = f;
-                        break;
-                    }
-                }
-            }
-
-            if (foundFile != null) {
-                File normalized = RomNormalizer.getNormalizedRomFile(MainActivity.this, foundFile);
-                runOnUiThread(() -> launchDirect(normalized.getAbsolutePath()));
-            } else {
-                runOnUiThread(() -> {
-                    Toast.makeText(MainActivity.this, "mslug.zip not found yet. Please tap 'Select ROM File' or 'Select ROMs Folder'!", Toast.LENGTH_LONG).show();
-                    openFilePicker();
-                });
-            }
-        }).start();
-    }
 
     private void launchDirect(String romPath) {
         ensureBiosSynchronized();

@@ -3,47 +3,47 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#121216"
-    android:padding="24dp"
-    android:gravity="center_horizontal">
+    android:background="@color/bg_main"
+    android:padding="16dp">
 
+    <!-- Header -->
     <TextView
         android:id="@+id/tv_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="ARCADE ENGINE"
-        android:textColor="#00E5FF"
-        android:textSize="28sp"
+        android:textColor="@color/text_primary"
+        android:textSize="22sp"
         android:textStyle="bold"
-        android:letterSpacing="0.08"
-        android:layout_marginTop="16dp" />
+        android:letterSpacing="0.04" />
 
     <TextView
         android:id="@+id/tv_subtitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hyper-Responsive • Metal Slug &amp; Neo Geo Arcade"
-        android:textColor="#888899"
-        android:textSize="14sp"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="24dp" />
+        android:text="Local ROM Browser"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="16dp" />
 
     <!-- Status Card -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="#1E1E28"
-        android:padding="16dp"
-        android:layout_marginBottom="20dp">
+        android:background="@drawable/bg_card"
+        android:padding="12dp"
+        android:elevation="2dp"
+        android:layout_marginBottom="16dp">
 
         <TextView
             android:id="@+id/tv_bios_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Neo Geo BIOS (neogeo.zip): Checking..."
-            android:textColor="#FFB300"
-            android:textSize="14sp"
+            android:textColor="@color/accent_gold"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
@@ -51,63 +51,64 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Ready to load game"
-            android:textColor="#CCCCCC"
-            android:textSize="13sp"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
             android:layout_marginTop="4dp" />
     </LinearLayout>
 
-    <!-- Action Buttons -->
-    <Button
-        android:id="@+id/btn_select_rom"
+    <!-- Action Bar -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:text="📁  SELECT ROM FILE (.ZIP)"
-        android:textSize="15sp"
-        android:textStyle="bold"
-        android:textColor="#FFFFFF"
-        android:backgroundTint="#0091EA"
-        android:layout_marginBottom="12dp" />
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp">
 
-    <Button
-        android:id="@+id/btn_select_folder"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:text="📂  SELECT ROMS &amp; BIOS FOLDER"
-        android:textSize="15sp"
-        android:textStyle="bold"
-        android:textColor="#FFFFFF"
-        android:backgroundTint="#2E7D32"
-        android:layout_marginBottom="12dp" />
+        <Button
+            android:id="@+id/btn_select_rom"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_weight="1"
+            android:text="SELECT ROM"
+            android:background="@drawable/bg_btn_primary"
+            android:textColor="#121316"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="8dp"
+            android:layout_marginRight="8dp"
+            android:elevation="2dp" />
 
-    <Button
-        android:id="@+id/btn_quick_metal_slug"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:text="🚀  QUICK LAUNCH: METAL SLUG"
-        android:textSize="15sp"
-        android:textStyle="bold"
-        android:textColor="#FFFFFF"
-        android:backgroundTint="#D50000"
-        android:layout_marginBottom="16dp" />
+        <Button
+            android:id="@+id/btn_select_folder"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_weight="1"
+            android:text="SELECT FOLDER"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:elevation="2dp" />
+    </LinearLayout>
 
-    <!-- Game List Header -->
+    <!-- Section Header -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="DETECTED ARCADE GAMES"
-        android:textColor="#AAAAAA"
-        android:textSize="12sp"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
         android:textStyle="bold"
-        android:letterSpacing="0.05"
-        android:layout_marginTop="8dp"
+        android:letterSpacing="0.08"
         android:layout_marginBottom="8dp" />
 
+    <!-- Game List -->
     <ListView
         android:id="@+id/lv_games"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:divider="#2A2A38"
-        android:dividerHeight="1dp" />
+        android:divider="@android:color/transparent"
+        android:dividerHeight="8dp"
+        android:listSelector="@android:color/transparent" />
 
 </LinearLayout>

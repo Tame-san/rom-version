@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_main">#17181C</color>
+    <color name="surface_card">#202126</color>
+    <color name="surface_card_pressed">#282A30</color>
+    <color name="card_border">#303238</color>
+    <color name="card_border_focus">#42454E</color>
+    <color name="text_primary">#EEEEF0</color>
+    <color name="text_secondary">#8E9099</color>
+    <color name="accent_gold">#E8A702</color>
+    <color name="accent_gold_pressed">#D4A017</color>
+    <color name="accent_badge_bg">#2B2312</color>
+    <color name="accent_badge_border">#E8A702</color>
+    <color name="status_green">#34D399</color>
+</resources>
