@@ -78,8 +78,8 @@ static std::string get_core_path(struct android_app* app) {
     return core_path;
 }
 
-static std::string get_rom_path_from_intent(struct android_app* app) {
-    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) {
+static std::string get_intent_string_extra(struct android_app* app, const char* extra_name) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz || !extra_name) {
         return "";
     }
     JNIEnv* env = nullptr;
@@ -97,7 +97,7 @@ static std::string get_rom_path_from_intent(struct android_app* app) {
             jclass intent_class = env->GetObjectClass(intent);
             jmethodID getStringExtra_mid = env->GetMethodID(intent_class, "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;");
             if (getStringExtra_mid) {
-                jstring key = env->NewStringUTF("ROM_PATH");
+                jstring key = env->NewStringUTF(extra_name);
                 jstring val = (jstring)env->CallObjectMethod(intent, getStringExtra_mid, key);
                 env->DeleteLocalRef(key);
                 if (val) {
@@ -115,6 +115,25 @@ static std::string get_rom_path_from_intent(struct android_app* app) {
     env->DeleteLocalRef(act_class);
     vm->DetachCurrentThread();
     return result;
+}
+
+static void show_android_error(struct android_app* app, const char* title, const char* message) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
+    JNIEnv* env = nullptr;
+    JavaVM* vm = app->activity->vm;
+    if (vm->AttachCurrentThread(&env, nullptr) == JNI_OK && env) {
+        jclass act_class = env->GetObjectClass(app->activity->clazz);
+        jmethodID showFatalError_mid = env->GetMethodID(act_class, "showFatalError", "(Ljava/lang/String;Ljava/lang/String;)V");
+        if (showFatalError_mid) {
+            jstring jtitle = env->NewStringUTF(title);
+            jstring jmsg = env->NewStringUTF(message);
+            env->CallVoidMethod(app->activity->clazz, showFatalError_mid, jtitle, jmsg);
+            env->DeleteLocalRef(jtitle);
+            env->DeleteLocalRef(jmsg);
+        }
+        env->DeleteLocalRef(act_class);
+        vm->DetachCurrentThread();
+    }
 }
 
 static void return_to_launcher(struct android_app* app) {
@@ -248,21 +267,48 @@ static int init_display(EngineContext* engine) {
         }
     }
 
-    // 2. Load ROM: Check launching Intent first
-    std::string intent_rom = get_rom_path_from_intent(engine->app);
+    if (!engine->core_host.is_core_loaded()) {
+        LOGE("Failed to load FBNeo arcade core!");
+        show_android_error(engine->app, "Arcade Core Missing",
+            "Failed to load the Libretro FBNeo arcade core library (.so).\nPlease ensure the APK was installed correctly.");
+    }
+
+    // 2. Configure System and Save Directories from Intent
+    std::string bios_dir = get_intent_string_extra(engine->app, "BIOS_DIR");
+    std::string system_dir = get_intent_string_extra(engine->app, "SYSTEM_DIR");
+    std::string save_dir = get_intent_string_extra(engine->app, "SAVE_DIR");
+
+    if (!bios_dir.empty()) {
+        engine->core_host.set_system_directory(bios_dir);
+    } else if (!system_dir.empty()) {
+        engine->core_host.set_system_directory(system_dir);
+    }
+
+    if (!save_dir.empty()) {
+        engine->core_host.set_save_directory(save_dir);
+    }
+
+    // 3. Load ROM: Check launching Intent first
+    std::string intent_rom = get_intent_string_extra(engine->app, "ROM_PATH");
+    bool loaded = false;
     if (!intent_rom.empty()) {
         LOGI("Found ROM_PATH from launching Intent: %s", intent_rom.c_str());
-        size_t slash = intent_rom.find_last_of("/\\");
-        if (slash != std::string::npos) {
-            engine->core_host.set_system_directory(intent_rom.substr(0, slash));
+        if (engine->core_host.get_system_directory().empty()) {
+            size_t slash = intent_rom.find_last_of("/\\");
+            if (slash != std::string::npos) {
+                engine->core_host.set_system_directory(intent_rom.substr(0, slash));
+            }
         }
-        if (engine->core_host.load_game(intent_rom)) {
+        loaded = engine->core_host.load_game(intent_rom);
+        if (loaded) {
             LOGI("Loaded ROM successfully: %s", intent_rom.c_str());
+        } else {
+            LOGE("retro_load_game failed for Intent ROM: %s", intent_rom.c_str());
         }
     }
 
-    // 3. If not loaded via intent, check common phone directories for flagship Metal Slug
-    if (!engine->core_host.is_game_loaded()) {
+    // 4. If not loaded via intent, check common phone directories for flagship Metal Slug
+    if (!loaded) {
         static const char* candidate_roms[] = {
             "/sdcard/roms/mslug.zip",
             "/storage/emulated/0/roms/mslug.zip",
@@ -279,15 +325,18 @@ static int init_display(EngineContext* engine) {
         };
 
         for (const char* rom_path : candidate_roms) {
-            size_t slash = std::string(rom_path).find_last_of("/\\");
-            if (slash != std::string::npos) {
-                engine->core_host.set_system_directory(std::string(rom_path).substr(0, slash));
-            }
             if (engine->core_host.load_game(rom_path)) {
+                loaded = true;
                 LOGI("Loaded flagship arcade ROM: %s", rom_path);
                 break;
             }
         }
+    }
+
+    if (!loaded && !intent_rom.empty()) {
+        LOGE("Failed to boot arcade ROM: %s", intent_rom.c_str());
+        show_android_error(engine->app, "Game Boot Notice",
+            "Could not boot the selected game.\n\nFor Neo Geo games (Metal Slug, KOF, Garou), please ensure 'neogeo.zip' BIOS is in your ROMs folder.");
     }
 
     engine->is_initialized = true;

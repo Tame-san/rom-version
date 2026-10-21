@@ -52,6 +52,12 @@ public:
     // Configures Libretro pixel format (RGB565, XRGB8888, 0RGB1555)
     void set_pixel_format(enum retro_pixel_format format);
 
+    // Updates target aspect ratio
+    void set_aspect_ratio(float aspect_ratio);
+
+    // Sets custom status/error message for the on-screen display
+    void set_status_message(const std::string& msg) { status_message_ = msg; }
+
     // Updates game core texture with new frame from retro_video_refresh callback
     void update_frame(const void* data, unsigned width, unsigned height, size_t pitch);
 
@@ -66,6 +72,7 @@ private:
     void init_game_pipeline();
     void init_overlay_pipeline();
     void render_game();
+    void render_splash_screen();
     void render_touch_overlay(const TouchInput& touch_input);
     void draw_circle(float cx, float cy, float radius, uint32_t color_rgba, float alpha_mult = 1.0f);
     void draw_rect(float x, float y, float w, float h, uint32_t color_rgba, float alpha_mult = 1.0f);
@@ -96,6 +103,11 @@ private:
     GLint u_game_format_loc_ = -1;
     GLint u_overlay_proj_loc_ = -1;
     GLint u_overlay_color_loc_ = -1;
+
+    unsigned last_tex_w_ = 0;
+    unsigned last_tex_h_ = 0;
+    GLenum last_tex_format_ = 0;
+    std::string status_message_;
 
     bool initialized_ = false;
 };

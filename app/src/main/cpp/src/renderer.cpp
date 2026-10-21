@@ -239,6 +239,13 @@ void Renderer::set_pixel_format(enum retro_pixel_format format) {
     pixel_format_ = format;
 }
 
+void Renderer::set_aspect_ratio(float aspect_ratio) {
+    if (aspect_ratio > 0.0f) {
+        game_aspect_ratio_ = aspect_ratio;
+        game_viewport_ = calculate_arcade_viewport(screen_w_, screen_h_, game_aspect_ratio_);
+    }
+}
+
 void Renderer::update_frame(const void* data, unsigned width, unsigned height, size_t pitch) {
     // SEC-03: Reject NULL, invalid pointers, and hardware rendering sentinel
     if (!data || data == RETRO_HW_FRAME_BUFFER_VALID || width == 0 || height == 0) return;
@@ -264,7 +271,14 @@ void Renderer::update_frame(const void* data, unsigned width, unsigned height, s
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, pitch / (gl_type == GL_UNSIGNED_BYTE ? 4 : 2));
 
-    glTexImage2D(GL_TEXTURE_2D, 0, gl_format, width, height, 0, gl_format, gl_type, data);
+    if (width != last_tex_w_ || height != last_tex_h_ || gl_format != last_tex_format_) {
+        glTexImage2D(GL_TEXTURE_2D, 0, gl_format, width, height, 0, gl_format, gl_type, data);
+        last_tex_w_ = width;
+        last_tex_h_ = height;
+        last_tex_format_ = gl_format;
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, gl_format, gl_type, data);
+    }
 
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -407,6 +421,52 @@ void Renderer::render_touch_overlay(const TouchInput& touch_input) {
 #endif
 }
 
+void Renderer::render_splash_screen() {
+#ifdef __ANDROID__
+    glViewport(0, 0, screen_w_, screen_h_);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glUseProgram(overlay_program_);
+    glBindVertexArray(overlay_vao_);
+
+    float left = 0.0f, right = (float)screen_w_;
+    float bottom = (float)screen_h_, top = 0.0f;
+    float near = -1.0f, far = 1.0f;
+
+    float proj[16] = {
+        2.0f / (right - left), 0.0f, 0.0f, 0.0f,
+        0.0f, 2.0f / (top - bottom), 0.0f, 0.0f,
+        0.0f, 0.0f, -2.0f / (far - near), 0.0f,
+        -(right + left) / (right - left), -(top + bottom) / (top - bottom), -(far + near) / (far - near), 1.0f
+    };
+    glUniformMatrix4fv(u_overlay_proj_loc_, 1, GL_FALSE, proj);
+
+    // Center splash / marquee card
+    float card_w = screen_w_ * 0.44f;
+    float card_h = screen_h_ * 0.36f;
+    float card_x = (screen_w_ - card_w) * 0.5f;
+    float card_y = (screen_h_ - card_h) * 0.5f;
+
+    // Outer neon border
+    draw_rect(card_x - 3.0f, card_y - 3.0f, card_w + 6.0f, card_h + 6.0f, 0x00E5FFCC, 0.75f);
+    // Dark card background
+    draw_rect(card_x, card_y, card_w, card_h, 0x14141EEE, 0.95f);
+    // Top banner strip (Cyan accent)
+    draw_rect(card_x, card_y, card_w, card_h * 0.16f, 0x00E5FF88, 0.90f);
+    // Center arcade CRT panel
+    draw_rect(card_x + 18.0f, card_y + card_h * 0.25f, card_w - 36.0f, card_h * 0.45f, 0x222233EE, 0.85f);
+    // Center glowing power bar
+    draw_rect(card_x + 36.0f, card_y + card_h * 0.45f, card_w - 72.0f, card_h * 0.06f, 0x00E5FFFF, 0.95f);
+    // Bottom MENU instruction bar
+    draw_rect(card_x + 18.0f, card_y + card_h * 0.76f, card_w - 36.0f, card_h * 0.15f, 0xE65100DD, 0.90f);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+    glDisable(GL_BLEND);
+#endif
+}
+
 void Renderer::render(const TouchInput& touch_input) {
 #ifdef __ANDROID__
     // Clear letterbox / pillarbox background to deep arcade black
@@ -416,6 +476,8 @@ void Renderer::render(const TouchInput& touch_input) {
     // 1. Render core game screen inside 4:3 letterbox/pillarbox viewport
     if (has_new_frame_) {
         render_game();
+    } else {
+        render_splash_screen();
     }
 
     // 2. Render virtual arcade touch overlay

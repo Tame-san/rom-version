@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdarg>
 #include <cstring>
+#include <sys/stat.h>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -98,12 +99,69 @@ bool CoreHost::cb_environment(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: {
-            *(const char**)data = host->system_dir_.c_str();
+            if (host->system_dir_.empty()) {
+                *(const char**)data = nullptr;
+            } else {
+                *(const char**)data = host->system_dir_.c_str();
+            }
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: {
-            *(const char**)data = host->save_dir_.c_str();
+            if (host->save_dir_.empty()) {
+                *(const char**)data = nullptr;
+            } else {
+                *(const char**)data = host->save_dir_.c_str();
+            }
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: {
+            if (data) {
+                *static_cast<unsigned*>(data) = 1;
+                return true;
+            }
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {
+            if (data) {
+                *static_cast<bool*>(data) = false;
+                return true;
+            }
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_LANGUAGE: {
+            if (data) {
+                *static_cast<unsigned*>(data) = 0; // English
+                return true;
+            }
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
+            if (data) {
+                int mask = 0;
+                if (!host->suppress_video_) mask |= 1;
+                if (!host->mute_audio_) mask |= 2;
+                *static_cast<int*>(data) = mask;
+                return true;
+            }
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: {
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_SET_ROTATION: {
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS:
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL:
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
             return true;
         }
 
@@ -397,6 +455,22 @@ bool CoreHost::load_game(const std::string& rom_path) {
 
     run_ahead_frames_ = active_profile_.run_ahead_frames;
 
+    // Ensure system directory is set (fallback to ROM parent folder if not configured)
+    if (system_dir_.empty()) {
+        size_t slash = rom_path.find_last_of("/\\");
+        if (slash != std::string::npos) {
+            system_dir_ = rom_path.substr(0, slash);
+        }
+    }
+
+    // Ensure save directory is set and created
+    if (save_dir_.empty()) {
+        save_dir_ = system_dir_ + "/saves";
+    }
+#ifdef __ANDROID__
+    mkdir(save_dir_.c_str(), 0755);
+#endif
+
     if (!fn_load_game_) {
         LOGE("No retro_load_game function available");
         return false;
@@ -420,6 +494,10 @@ bool CoreHost::load_game(const std::string& rom_path) {
              av_info_.geometry.aspect_ratio,
              av_info_.timing.fps,
              av_info_.timing.sample_rate);
+
+        if (renderer_ && av_info_.geometry.aspect_ratio > 0.0f) {
+            renderer_->set_aspect_ratio(av_info_.geometry.aspect_ratio);
+        }
 
         if (audio_engine_ && av_info_.timing.sample_rate > 0) {
             audio_engine_->start(static_cast<int>(av_info_.timing.sample_rate), 2);

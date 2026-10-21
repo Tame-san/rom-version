@@ -77,6 +77,9 @@ public class MainActivity extends Activity {
             }
         });
 
+        // Extract bundled BIOS files from APK assets (neogeo.zip, pgm.zip, etc.)
+        extractBundledBioses();
+
         // Initial scan of internal app storage and check BIOS
         updateBiosStatus();
         scanInternalRoms();
@@ -86,6 +89,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        ensureBiosSynchronized();
         updateBiosStatus();
         scanInternalRoms();
     }
@@ -98,18 +102,123 @@ public class MainActivity extends Activity {
         return dir;
     }
 
+    private File getBiosDir() {
+        File dir = new File(getExternalFilesDir(null), "bios");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    private File getSystemDir() {
+        File dir = new File(getExternalFilesDir(null), "system");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    private File getSavesDir() {
+        File dir = new File(getExternalFilesDir(null), "saves");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    private void extractBundledBioses() {
+        new Thread(() -> {
+            try {
+                String[] bioses = getAssets().list("bios");
+                if (bioses == null || bioses.length == 0) return;
+
+                File romsDir = getRomsDir();
+                File biosDir = getBiosDir();
+                File systemDir = getSystemDir();
+                getSavesDir(); // Ensure saves directory exists
+
+                for (String bios : bioses) {
+                    if (!bios.toLowerCase().endsWith(".zip")) continue;
+                    File targetRoms = new File(romsDir, bios);
+                    File targetBios = new File(biosDir, bios);
+                    File targetSystem = new File(systemDir, bios);
+
+                    if (!targetRoms.exists() || targetRoms.length() == 0) {
+                        copyAssetToFile("bios/" + bios, targetRoms);
+                    }
+                    if (!targetBios.exists() || targetBios.length() == 0) {
+                        copyAssetToFile("bios/" + bios, targetBios);
+                    }
+                    if (!targetSystem.exists() || targetSystem.length() == 0) {
+                        copyAssetToFile("bios/" + bios, targetSystem);
+                    }
+                }
+
+                runOnUiThread(() -> {
+                    updateBiosStatus();
+                    scanInternalRoms();
+                });
+            } catch (Exception e) {
+                android.util.Log.e("MainActivity", "Failed to extract bundled BIOSes: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    private void copyAssetToFile(String assetPath, File dest) throws Exception {
+        try (InputStream in = getAssets().open(assetPath);
+             OutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[65536];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+        }
+    }
+
+    private void ensureBiosSynchronized() {
+        File src = new File(getBiosDir(), "neogeo.zip");
+        File dst = new File(getRomsDir(), "neogeo.zip");
+        if (src.exists() && (!dst.exists() || dst.length() == 0)) {
+            try {
+                java.nio.file.Files.copy(src.toPath(), dst.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (Exception ignored) {}
+        }
+        File sys = new File(getSystemDir(), "neogeo.zip");
+        if (src.exists() && (!sys.exists() || sys.length() == 0)) {
+            try {
+                java.nio.file.Files.copy(src.toPath(), sys.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (Exception ignored) {}
+        }
+    }
+
     private boolean isBiosPresent() {
-        File neogeo = new File(getRomsDir(), "neogeo.zip");
-        return neogeo.exists() && neogeo.length() > 1000;
+        File neogeoRoms = new File(getRomsDir(), "neogeo.zip");
+        File neogeoBios = new File(getBiosDir(), "neogeo.zip");
+        File neogeoSys = new File(getSystemDir(), "neogeo.zip");
+        return (neogeoRoms.exists() && neogeoRoms.length() > 1000) ||
+               (neogeoBios.exists() && neogeoBios.length() > 1000) ||
+               (neogeoSys.exists() && neogeoSys.length() > 1000);
+    }
+
+    private boolean isNeoGeoRom(String fileName) {
+        if (fileName == null) return false;
+        String base = fileName.toLowerCase().replace(".zip", "");
+        return base.startsWith("mslug") || base.startsWith("kof") || base.startsWith("garou") ||
+               base.startsWith("lastbld") || base.startsWith("samsho") || base.startsWith("rbff") ||
+               base.startsWith("sengoku") || base.startsWith("wjammers") || base.startsWith("spinmast") ||
+               base.startsWith("nam1975") || base.startsWith("fatfur") || base.startsWith("aof") ||
+               base.startsWith("neogal");
     }
 
     private void updateBiosStatus() {
+        ensureBiosSynchronized();
         if (isBiosPresent()) {
-            tvBiosStatus.setText("✓ Neo Geo BIOS: Ready (neogeo.zip detected)");
+            tvBiosStatus.setText("✓ Neo Geo BIOS: Ready (neogeo.zip active)");
             tvBiosStatus.setTextColor(0xFF00E676); // Bright green
         } else {
-            tvBiosStatus.setText("⚠ Neo Geo BIOS: Not found (Place neogeo.zip in ROMs folder)");
+            tvBiosStatus.setText("⚠ Neo Geo BIOS: Not found (Tap to install neogeo.zip)");
             tvBiosStatus.setTextColor(0xFFFFB300); // Amber
+            tvBiosStatus.setOnClickListener(v -> openFilePicker());
         }
     }
 
@@ -355,23 +464,25 @@ public class MainActivity extends Activity {
     }
 
     private void launchDirect(String romPath) {
-        if (!isBiosPresent()) {
-            File romParent = new File(romPath).getParentFile();
-            if (romParent != null) {
-                File candidateBio = new File(romParent, "neogeo.zip");
-                if (candidateBio.exists()) {
-                    try {
-                        File destBio = new File(getRomsDir(), "neogeo.zip");
-                        if (!destBio.exists()) {
-                            java.nio.file.Files.copy(candidateBio.toPath(), destBio.toPath());
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
+        ensureBiosSynchronized();
+
+        String fileName = new File(romPath).getName();
+        if (isNeoGeoRom(fileName) && !isBiosPresent()) {
+            new android.app.AlertDialog.Builder(this)
+                .setTitle("Neo Geo BIOS Required")
+                .setMessage("'" + fileName + "' requires the Neo Geo BIOS (neogeo.zip) to boot.\n\nPlease place 'neogeo.zip' in your ROMs folder, or select 'neogeo.zip' via the file picker.")
+                .setPositiveButton("Select neogeo.zip", (d, w) -> openFilePicker())
+                .setNeutralButton("Select Folder", (d, w) -> openFolderPicker())
+                .setNegativeButton("Cancel", null)
+                .show();
+            return;
         }
 
         Intent intent = new Intent(this, ArcadeActivity.class);
         intent.putExtra("ROM_PATH", romPath);
+        intent.putExtra("BIOS_DIR", getBiosDir().getAbsolutePath());
+        intent.putExtra("SYSTEM_DIR", getRomsDir().getAbsolutePath());
+        intent.putExtra("SAVE_DIR", getSavesDir().getAbsolutePath());
         startActivity(intent);
     }
 }

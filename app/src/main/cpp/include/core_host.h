@@ -45,6 +45,8 @@ public:
     void set_system_directory(const std::string& dir) { system_dir_ = dir; }
     void set_save_directory(const std::string& dir) { save_dir_ = dir; }
     void set_run_ahead_frames(int frames) { run_ahead_frames_ = frames; }
+    const std::string& get_system_directory() const { return system_dir_; }
+    const std::string& get_save_directory() const { return save_dir_; }
 
     // State inspections
     bool is_core_loaded() const { return core_handle_ != nullptr; }
@@ -107,8 +109,8 @@ private:
     struct retro_system_av_info av_info_{};
 
     // Paths
-    std::string system_dir_ = "/sdcard/rom-version/mame/bios";
-    std::string save_dir_ = "/sdcard/rom-version/saves";
+    std::string system_dir_;
+    std::string save_dir_;
 
     // RunAhead Rollback state
     int run_ahead_frames_ = 1;
