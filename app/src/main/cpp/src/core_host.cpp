@@ -469,6 +469,8 @@ bool CoreHost::load_game(const std::string& rom_path) {
     }
 #ifdef __ANDROID__
     mkdir(save_dir_.c_str(), 0755);
+    std::string fbneo_sys = system_dir_ + "/fbneo";
+    mkdir(fbneo_sys.c_str(), 0755);
 #endif
 
     if (!fn_load_game_) {

@@ -135,6 +135,11 @@ public class MainActivity extends Activity {
                 File romsDir = getRomsDir();
                 File biosDir = getBiosDir();
                 File systemDir = getSystemDir();
+                File fbneoSystemDir = new File(systemDir, "fbneo");
+                if (!fbneoSystemDir.exists()) fbneoSystemDir.mkdirs();
+                File fbneoRomsDir = new File(romsDir, "fbneo");
+                if (!fbneoRomsDir.exists()) fbneoRomsDir.mkdirs();
+
                 getSavesDir(); // Ensure saves directory exists
 
                 for (String bios : bioses) {
@@ -142,6 +147,8 @@ public class MainActivity extends Activity {
                     File targetRoms = new File(romsDir, bios);
                     File targetBios = new File(biosDir, bios);
                     File targetSystem = new File(systemDir, bios);
+                    File targetFbneoSys = new File(fbneoSystemDir, bios);
+                    File targetFbneoRom = new File(fbneoRomsDir, bios);
 
                     if (!targetRoms.exists() || targetRoms.length() == 0) {
                         copyAssetToFile("bios/" + bios, targetRoms);
@@ -152,7 +159,15 @@ public class MainActivity extends Activity {
                     if (!targetSystem.exists() || targetSystem.length() == 0) {
                         copyAssetToFile("bios/" + bios, targetSystem);
                     }
+                    if (!targetFbneoSys.exists() || targetFbneoSys.length() == 0) {
+                        copyAssetToFile("bios/" + bios, targetFbneoSys);
+                    }
+                    if (!targetFbneoRom.exists() || targetFbneoRom.length() == 0) {
+                        copyAssetToFile("bios/" + bios, targetFbneoRom);
+                    }
                 }
+
+                ensureBiosSynchronized();
 
                 runOnUiThread(() -> {
                     updateBiosStatus();
@@ -177,27 +192,45 @@ public class MainActivity extends Activity {
 
     private void ensureBiosSynchronized() {
         File src = new File(getBiosDir(), "neogeo.zip");
-        File dst = new File(getRomsDir(), "neogeo.zip");
-        if (src.exists() && (!dst.exists() || dst.length() == 0)) {
-            try {
-                java.nio.file.Files.copy(src.toPath(), dst.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            } catch (Exception ignored) {}
+        if (!src.exists() || src.length() < 1000) {
+            src = new File(getRomsDir(), "neogeo.zip");
         }
-        File sys = new File(getSystemDir(), "neogeo.zip");
-        if (src.exists() && (!sys.exists() || sys.length() == 0)) {
-            try {
-                java.nio.file.Files.copy(src.toPath(), sys.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            } catch (Exception ignored) {}
+        if (!src.exists() || src.length() < 1000) {
+            src = new File(getSystemDir(), "neogeo.zip");
+        }
+
+        if (src.exists() && src.length() > 1000) {
+            File[] targets = {
+                new File(getRomsDir(), "neogeo.zip"),
+                new File(getBiosDir(), "neogeo.zip"),
+                new File(getSystemDir(), "neogeo.zip"),
+                new File(new File(getSystemDir(), "fbneo"), "neogeo.zip"),
+                new File(new File(getRomsDir(), "fbneo"), "neogeo.zip")
+            };
+            for (File t : targets) {
+                if (!t.getParentFile().exists()) {
+                    t.getParentFile().mkdirs();
+                }
+                if (!t.exists() || t.length() != src.length()) {
+                    try {
+                        java.nio.file.Files.copy(src.toPath(), t.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    } catch (Exception ignored) {}
+                }
+            }
         }
     }
 
     private boolean isBiosPresent() {
-        File neogeoRoms = new File(getRomsDir(), "neogeo.zip");
-        File neogeoBios = new File(getBiosDir(), "neogeo.zip");
-        File neogeoSys = new File(getSystemDir(), "neogeo.zip");
-        return (neogeoRoms.exists() && neogeoRoms.length() > 1000) ||
-               (neogeoBios.exists() && neogeoBios.length() > 1000) ||
-               (neogeoSys.exists() && neogeoSys.length() > 1000);
+        File[] checks = {
+            new File(getRomsDir(), "neogeo.zip"),
+            new File(getBiosDir(), "neogeo.zip"),
+            new File(getSystemDir(), "neogeo.zip"),
+            new File(new File(getSystemDir(), "fbneo"), "neogeo.zip")
+        };
+        for (File f : checks) {
+            if (f.exists() && f.length() > 1000) return true;
+        }
+        return false;
     }
 
     private boolean isNeoGeoRom(String fileName) {
@@ -272,15 +305,16 @@ public class MainActivity extends Activity {
 
     private void handleSelectedFileUri(Uri uri) {
         String fileName = getFileNameFromUri(uri);
-        Toast.makeText(this, "Loading " + fileName + "...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Preparing " + fileName + "...", Toast.LENGTH_SHORT).show();
 
         new Thread(() -> {
             try {
                 File target = new File(getRomsDir(), fileName);
                 copyUriToFile(uri, target);
 
-                // If user selected neogeo.zip, update BIOS status
+                // If user selected neogeo.zip, update BIOS status & synchronize
                 if (fileName.equalsIgnoreCase("neogeo.zip")) {
+                    ensureBiosSynchronized();
                     runOnUiThread(() -> {
                         updateBiosStatus();
                         Toast.makeText(MainActivity.this, "Neo Geo BIOS installed successfully!", Toast.LENGTH_SHORT).show();
@@ -288,9 +322,11 @@ public class MainActivity extends Activity {
                     return;
                 }
 
+                File finalRom = RomNormalizer.getNormalizedRomFile(MainActivity.this, target);
+
                 runOnUiThread(() -> {
                     updateBiosStatus();
-                    launchDirect(target.getAbsolutePath());
+                    launchDirect(finalRom.getAbsolutePath());
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error copying ROM: " + e.getMessage(), Toast.LENGTH_LONG).show());
@@ -415,58 +451,71 @@ public class MainActivity extends Activity {
     }
 
     private void launchGameItem(GameItem item) {
-        if (item.localPath != null && new File(item.localPath).exists()) {
-            launchDirect(item.localPath);
-            return;
-        }
-        if (item.uri != null) {
-            Toast.makeText(this, "Preparing " + item.fileName + "...", Toast.LENGTH_SHORT).show();
-            new Thread(() -> {
-                try {
+        Toast.makeText(this, "Preparing " + item.fileName + "...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                File romToLaunch;
+                if (item.localPath != null && new File(item.localPath).exists()) {
+                    romToLaunch = RomNormalizer.getNormalizedRomFile(MainActivity.this, new File(item.localPath));
+                } else if (item.uri != null) {
                     File target = new File(getRomsDir(), item.fileName);
                     if (!target.exists() || target.length() == 0) {
                         copyUriToFile(item.uri, target);
                     }
-                    runOnUiThread(() -> launchDirect(target.getAbsolutePath()));
-                } catch (Exception e) {
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                    romToLaunch = RomNormalizer.getNormalizedRomFile(MainActivity.this, target);
+                } else {
+                    return;
                 }
-            }).start();
-        }
+                final String finalPath = romToLaunch.getAbsolutePath();
+                runOnUiThread(() -> launchDirect(finalPath));
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }).start();
     }
 
     private void quickLaunchMetalSlug() {
-        File localMslug = new File(getRomsDir(), "mslug.zip");
-        if (localMslug.exists() && localMslug.length() > 1000) {
-            launchDirect(localMslug.getAbsolutePath());
-            return;
-        }
-
-        // Try direct phone paths
-        String[] candidates = {
-            "/sdcard/roms/mslug.zip",
-            "/storage/emulated/0/roms/mslug.zip",
-            "/sdcard/Download/roms/mslug.zip",
-            "/storage/emulated/0/Download/roms/mslug.zip",
-            "/sdcard/Download/mslug.zip",
-            "/storage/emulated/0/Download/mslug.zip"
-        };
-        for (String c : candidates) {
-            File f = new File(c);
-            if (f.exists() && f.canRead()) {
-                launchDirect(f.getAbsolutePath());
-                return;
+        Toast.makeText(this, "Preparing Metal Slug...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            File localMslug = new File(getRomsDir(), "mslug.zip");
+            File foundFile = null;
+            if (localMslug.exists() && localMslug.length() > 1000) {
+                foundFile = localMslug;
+            } else {
+                String[] candidates = {
+                    "/sdcard/roms/mslug.zip",
+                    "/storage/emulated/0/roms/mslug.zip",
+                    "/sdcard/Download/roms/mslug.zip",
+                    "/storage/emulated/0/Download/roms/mslug.zip",
+                    "/sdcard/Download/mslug.zip",
+                    "/storage/emulated/0/Download/mslug.zip"
+                };
+                for (String c : candidates) {
+                    File f = new File(c);
+                    if (f.exists() && f.canRead()) {
+                        foundFile = f;
+                        break;
+                    }
+                }
             }
-        }
 
-        Toast.makeText(this, "mslug.zip not found yet. Please tap 'Select ROM File' or 'Select ROMs Folder'!", Toast.LENGTH_LONG).show();
-        openFilePicker();
+            if (foundFile != null) {
+                File normalized = RomNormalizer.getNormalizedRomFile(MainActivity.this, foundFile);
+                runOnUiThread(() -> launchDirect(normalized.getAbsolutePath()));
+            } else {
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "mslug.zip not found yet. Please tap 'Select ROM File' or 'Select ROMs Folder'!", Toast.LENGTH_LONG).show();
+                    openFilePicker();
+                });
+            }
+        }).start();
     }
 
     private void launchDirect(String romPath) {
         ensureBiosSynchronized();
 
-        String fileName = new File(romPath).getName();
+        File romFile = new File(romPath);
+        String fileName = romFile.getName();
         if (isNeoGeoRom(fileName) && !isBiosPresent()) {
             new android.app.AlertDialog.Builder(this)
                 .setTitle("Neo Geo BIOS Required")
@@ -478,10 +527,23 @@ public class MainActivity extends Activity {
             return;
         }
 
+        // Also ensure neogeo.zip is placed in finalRomPath's parent directory if writable
+        File romParent = romFile.getParentFile();
+        if (romParent != null && romParent.canWrite()) {
+            File biosInRomDir = new File(romParent, "neogeo.zip");
+            File masterBios = new File(getBiosDir(), "neogeo.zip");
+            if (masterBios.exists() && (!biosInRomDir.exists() || biosInRomDir.length() < 1000)) {
+                try {
+                    java.nio.file.Files.copy(masterBios.toPath(), biosInRomDir.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (Exception ignored) {}
+            }
+        }
+
         Intent intent = new Intent(this, ArcadeActivity.class);
         intent.putExtra("ROM_PATH", romPath);
         intent.putExtra("BIOS_DIR", getBiosDir().getAbsolutePath());
-        intent.putExtra("SYSTEM_DIR", getRomsDir().getAbsolutePath());
+        intent.putExtra("SYSTEM_DIR", getSystemDir().getAbsolutePath());
+        intent.putExtra("ROMS_DIR", getRomsDir().getAbsolutePath());
         intent.putExtra("SAVE_DIR", getSavesDir().getAbsolutePath());
         startActivity(intent);
     }

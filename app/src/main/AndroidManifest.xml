@@ -62,7 +62,7 @@
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:alwaysRetainTaskState="true"
-            android:launchMode="singleInstance"
+            android:launchMode="standard"
             android:resizeableActivity="false"
             android:exported="false">
 

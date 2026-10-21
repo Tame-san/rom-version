@@ -41,13 +41,38 @@ struct EngineContext {
     arcade::CoreHost core_host;
 };
 
+struct ScopedJNIEnv {
+    JNIEnv* env = nullptr;
+    JavaVM* vm = nullptr;
+    bool attached = false;
+
+    ScopedJNIEnv(JavaVM* java_vm) : vm(java_vm) {
+        if (!vm) return;
+        jint res = vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+        if (res == JNI_EDETACHED) {
+            if (vm->AttachCurrentThread(&env, nullptr) == JNI_OK) {
+                attached = true;
+            }
+        }
+    }
+
+    ~ScopedJNIEnv() {
+        if (attached && vm) {
+            vm->DetachCurrentThread();
+        }
+    }
+
+    JNIEnv* get() const { return env; }
+    explicit operator bool() const { return env != nullptr; }
+};
+
 static std::string get_core_path(struct android_app* app) {
     if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) {
         return "libretro_fbneo.so";
     }
-    JNIEnv* env = nullptr;
-    JavaVM* vm = app->activity->vm;
-    if (vm->AttachCurrentThread(&env, nullptr) != JNI_OK || !env) {
+    ScopedJNIEnv jni(app->activity->vm);
+    JNIEnv* env = jni.get();
+    if (!env) {
         return "libretro_fbneo.so";
     }
 
@@ -74,7 +99,6 @@ static std::string get_core_path(struct android_app* app) {
         }
     }
     env->DeleteLocalRef(act_class);
-    vm->DetachCurrentThread();
     return core_path;
 }
 
@@ -82,9 +106,9 @@ static std::string get_intent_string_extra(struct android_app* app, const char* 
     if (!app || !app->activity || !app->activity->vm || !app->activity->clazz || !extra_name) {
         return "";
     }
-    JNIEnv* env = nullptr;
-    JavaVM* vm = app->activity->vm;
-    if (vm->AttachCurrentThread(&env, nullptr) != JNI_OK || !env) {
+    ScopedJNIEnv jni(app->activity->vm);
+    JNIEnv* env = jni.get();
+    if (!env) {
         return "";
     }
 
@@ -113,15 +137,14 @@ static std::string get_intent_string_extra(struct android_app* app, const char* 
         }
     }
     env->DeleteLocalRef(act_class);
-    vm->DetachCurrentThread();
     return result;
 }
 
 static void show_android_error(struct android_app* app, const char* title, const char* message) {
     if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
-    JNIEnv* env = nullptr;
-    JavaVM* vm = app->activity->vm;
-    if (vm->AttachCurrentThread(&env, nullptr) == JNI_OK && env) {
+    ScopedJNIEnv jni(app->activity->vm);
+    JNIEnv* env = jni.get();
+    if (env) {
         jclass act_class = env->GetObjectClass(app->activity->clazz);
         jmethodID showFatalError_mid = env->GetMethodID(act_class, "showFatalError", "(Ljava/lang/String;Ljava/lang/String;)V");
         if (showFatalError_mid) {
@@ -132,22 +155,20 @@ static void show_android_error(struct android_app* app, const char* title, const
             env->DeleteLocalRef(jmsg);
         }
         env->DeleteLocalRef(act_class);
-        vm->DetachCurrentThread();
     }
 }
 
 static void return_to_launcher(struct android_app* app) {
     if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
-    JNIEnv* env = nullptr;
-    JavaVM* vm = app->activity->vm;
-    if (vm->AttachCurrentThread(&env, nullptr) == JNI_OK && env) {
+    ScopedJNIEnv jni(app->activity->vm);
+    JNIEnv* env = jni.get();
+    if (env) {
         jclass act_class = env->GetObjectClass(app->activity->clazz);
         jmethodID finish_mid = env->GetMethodID(act_class, "finish", "()V");
         if (finish_mid) {
             env->CallVoidMethod(app->activity->clazz, finish_mid);
         }
         env->DeleteLocalRef(act_class);
-        vm->DetachCurrentThread();
     }
 }
 

@@ -2,6 +2,7 @@
 *.zip
 mame/roms/*.zip
 mame/bios/*.zip
+!app/src/main/assets/bios/*.zip
 
 # Keep directories
 !mame/
