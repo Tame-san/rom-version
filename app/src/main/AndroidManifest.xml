@@ -41,9 +41,22 @@
         android:theme="@style/Theme.ArcadeEngine.Fullscreen"
         android:extractNativeLibs="true">
 
-        <!-- NativeActivity directly hosting C++ arcade engine -->
+        <!-- Launcher Activity: ROM Browser & File Selector -->
         <activity
-            android:name="android.app.NativeActivity"
+            android:name=".MainActivity"
+            android:label="@string/app_name"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.GAME" />
+            </intent-filter>
+        </activity>
+
+        <!-- NativeActivity: High-Performance C++ Arcade Engine -->
+        <activity
+            android:name=".ArcadeActivity"
             android:label="@string/app_name"
             android:theme="@style/Theme.ArcadeEngine.Fullscreen"
             android:screenOrientation="sensorLandscape"
@@ -51,18 +64,12 @@
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"
             android:resizeableActivity="false"
-            android:exported="true">
+            android:exported="false">
 
             <!-- Name of the native C++ library (.so) -->
             <meta-data
                 android:name="android.app.lib_name"
                 android:value="arcade_engine" />
-
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.GAME" />
-            </intent-filter>
         </activity>
     </application>
 

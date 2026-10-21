@@ -4,6 +4,7 @@
 #include <android_native_app_glue.h>
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#include <jni.h>
 
 #include <chrono>
 #include <thread>
@@ -39,6 +40,97 @@ struct EngineContext {
     arcade::Renderer renderer;
     arcade::CoreHost core_host;
 };
+
+static std::string get_core_path(struct android_app* app) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) {
+        return "libretro_fbneo.so";
+    }
+    JNIEnv* env = nullptr;
+    JavaVM* vm = app->activity->vm;
+    if (vm->AttachCurrentThread(&env, nullptr) != JNI_OK || !env) {
+        return "libretro_fbneo.so";
+    }
+
+    std::string core_path = "libretro_fbneo.so";
+    jclass act_class = env->GetObjectClass(app->activity->clazz);
+    jmethodID getAppInfo_mid = env->GetMethodID(act_class, "getApplicationInfo", "()Landroid/content/pm/ApplicationInfo;");
+    if (getAppInfo_mid) {
+        jobject app_info = env->CallObjectMethod(app->activity->clazz, getAppInfo_mid);
+        if (app_info) {
+            jclass app_info_class = env->GetObjectClass(app_info);
+            jfieldID nativeLibDir_fid = env->GetFieldID(app_info_class, "nativeLibraryDir", "Ljava/lang/String;");
+            if (nativeLibDir_fid) {
+                jstring dir_jstr = (jstring)env->GetObjectField(app_info, nativeLibDir_fid);
+                if (dir_jstr) {
+                    const char* dir = env->GetStringUTFChars(dir_jstr, nullptr);
+                    if (dir) {
+                        core_path = std::string(dir) + "/libretro_fbneo.so";
+                        env->ReleaseStringUTFChars(dir_jstr, dir);
+                    }
+                    env->DeleteLocalRef(dir_jstr);
+                }
+            }
+            env->DeleteLocalRef(app_info);
+        }
+    }
+    env->DeleteLocalRef(act_class);
+    vm->DetachCurrentThread();
+    return core_path;
+}
+
+static std::string get_rom_path_from_intent(struct android_app* app) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) {
+        return "";
+    }
+    JNIEnv* env = nullptr;
+    JavaVM* vm = app->activity->vm;
+    if (vm->AttachCurrentThread(&env, nullptr) != JNI_OK || !env) {
+        return "";
+    }
+
+    std::string result;
+    jclass act_class = env->GetObjectClass(app->activity->clazz);
+    jmethodID getIntent_mid = env->GetMethodID(act_class, "getIntent", "()Landroid/content/Intent;");
+    if (getIntent_mid) {
+        jobject intent = env->CallObjectMethod(app->activity->clazz, getIntent_mid);
+        if (intent) {
+            jclass intent_class = env->GetObjectClass(intent);
+            jmethodID getStringExtra_mid = env->GetMethodID(intent_class, "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;");
+            if (getStringExtra_mid) {
+                jstring key = env->NewStringUTF("ROM_PATH");
+                jstring val = (jstring)env->CallObjectMethod(intent, getStringExtra_mid, key);
+                env->DeleteLocalRef(key);
+                if (val) {
+                    const char* str = env->GetStringUTFChars(val, nullptr);
+                    if (str) {
+                        result = str;
+                        env->ReleaseStringUTFChars(val, str);
+                    }
+                    env->DeleteLocalRef(val);
+                }
+            }
+            env->DeleteLocalRef(intent);
+        }
+    }
+    env->DeleteLocalRef(act_class);
+    vm->DetachCurrentThread();
+    return result;
+}
+
+static void return_to_launcher(struct android_app* app) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
+    JNIEnv* env = nullptr;
+    JavaVM* vm = app->activity->vm;
+    if (vm->AttachCurrentThread(&env, nullptr) == JNI_OK && env) {
+        jclass act_class = env->GetObjectClass(app->activity->clazz);
+        jmethodID finish_mid = env->GetMethodID(act_class, "finish", "()V");
+        if (finish_mid) {
+            env->CallVoidMethod(app->activity->clazz, finish_mid);
+        }
+        env->DeleteLocalRef(act_class);
+        vm->DetachCurrentThread();
+    }
+}
 
 static int init_display(EngineContext* engine) {
     if (!engine || !engine->app || !engine->app->window) {
@@ -119,6 +211,11 @@ static int init_display(EngineContext* engine) {
     eglQuerySurface(display, surface, EGL_WIDTH, &w);
     eglQuerySurface(display, surface, EGL_HEIGHT, &h);
 
+    if (w <= 0 || h <= 0) {
+        w = 1920;
+        h = 1080;
+    }
+
     engine->display = display;
     engine->surface = surface;
     engine->context = context;
@@ -135,42 +232,61 @@ static int init_display(EngineContext* engine) {
     engine->core_host.set_audio_engine(&engine->audio_engine);
     engine->core_host.set_renderer(&engine->renderer);
 
-    // Attempt to load standard arcade core (FBNeo)
-    static const char* potential_cores[] = {
-        "/data/data/com.arcade.engine/lib/libretro_fbneo.so",
-        "/data/app/libretro_fbneo.so",
-        "libretro_fbneo.so"
-    };
-
-    for (const char* core_path : potential_cores) {
-        if (engine->core_host.load_core(core_path)) {
-            LOGI("Loaded arcade core from %s", core_path);
-            break;
+    // 1. Load FBNeo arcade core
+    std::string core_path = get_core_path(engine->app);
+    LOGI("Attempting to load arcade core from: %s", core_path.c_str());
+    if (!engine->core_host.load_core(core_path)) {
+        static const char* fallback_cores[] = {
+            "libretro_fbneo.so",
+            "/data/data/com.arcade.engine/lib/libretro_fbneo.so"
+        };
+        for (const char* fb : fallback_cores) {
+            if (engine->core_host.load_core(fb)) {
+                LOGI("Loaded fallback core from: %s", fb);
+                break;
+            }
         }
     }
 
-    // Default flagship game search paths (Metal Slug) across all common Android directories
-    static const char* candidate_roms[] = {
-        "/sdcard/roms/mslug.zip",
-        "/storage/emulated/0/roms/mslug.zip",
-        "/sdcard/ROMs/mslug.zip",
-        "/storage/emulated/0/ROMs/mslug.zip",
-        "/sdcard/Download/roms/mslug.zip",
-        "/storage/emulated/0/Download/roms/mslug.zip",
-        "/sdcard/Download/mslug.zip",
-        "/storage/emulated/0/Download/mslug.zip",
-        "/sdcard/MAME4droid/roms/mslug.zip",
-        "/storage/emulated/0/MAME4droid/roms/mslug.zip",
-        "/sdcard/mame/roms/mslug.zip",
-        "/storage/emulated/0/mame/roms/mslug.zip",
-        "/sdcard/rom-version/mame/roms/mslug.zip",
-        "/storage/emulated/0/rom-version/mame/roms/mslug.zip"
-    };
+    // 2. Load ROM: Check launching Intent first
+    std::string intent_rom = get_rom_path_from_intent(engine->app);
+    if (!intent_rom.empty()) {
+        LOGI("Found ROM_PATH from launching Intent: %s", intent_rom.c_str());
+        size_t slash = intent_rom.find_last_of("/\\");
+        if (slash != std::string::npos) {
+            engine->core_host.set_system_directory(intent_rom.substr(0, slash));
+        }
+        if (engine->core_host.load_game(intent_rom)) {
+            LOGI("Loaded ROM successfully: %s", intent_rom.c_str());
+        }
+    }
 
-    for (const char* rom_path : candidate_roms) {
-        if (engine->core_host.load_game(rom_path)) {
-            LOGI("Loaded flagship arcade ROM: %s", rom_path);
-            break;
+    // 3. If not loaded via intent, check common phone directories for flagship Metal Slug
+    if (!engine->core_host.is_game_loaded()) {
+        static const char* candidate_roms[] = {
+            "/sdcard/roms/mslug.zip",
+            "/storage/emulated/0/roms/mslug.zip",
+            "/sdcard/ROMs/mslug.zip",
+            "/storage/emulated/0/ROMs/mslug.zip",
+            "/sdcard/Download/roms/mslug.zip",
+            "/storage/emulated/0/Download/roms/mslug.zip",
+            "/sdcard/Download/mslug.zip",
+            "/storage/emulated/0/Download/mslug.zip",
+            "/sdcard/MAME4droid/roms/mslug.zip",
+            "/storage/emulated/0/MAME4droid/roms/mslug.zip",
+            "/sdcard/mame/roms/mslug.zip",
+            "/storage/emulated/0/mame/roms/mslug.zip"
+        };
+
+        for (const char* rom_path : candidate_roms) {
+            size_t slash = std::string(rom_path).find_last_of("/\\");
+            if (slash != std::string::npos) {
+                engine->core_host.set_system_directory(std::string(rom_path).substr(0, slash));
+            }
+            if (engine->core_host.load_game(rom_path)) {
+                LOGI("Loaded flagship arcade ROM: %s", rom_path);
+                break;
+            }
         }
     }
 
@@ -270,7 +386,7 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
                 EGLint w, h;
                 eglQuerySurface(engine->display, engine->surface, EGL_WIDTH, &w);
                 eglQuerySurface(engine->display, engine->surface, EGL_HEIGHT, &h);
-                if (w != engine->width || h != engine->height) {
+                if (w > 0 && h > 0 && (w != engine->width || h != engine->height)) {
                     engine->width = w;
                     engine->height = h;
                     engine->renderer.on_surface_changed(w, h);
@@ -296,8 +412,8 @@ void android_main(struct android_app* app) {
         int events;
         struct android_poll_source* source;
 
-        // Non-blocking poll when animating, blocking when paused
-        bool active = engine.is_initialized && engine.has_focus;
+        // Poll events: non-blocking when initialized, blocking when surface not yet ready
+        bool active = engine.is_initialized;
         while ((ident = ALooper_pollOnce(active ? 0 : -1, nullptr, &events, (void**)&source)) >= 0) {
             if (source != nullptr) {
                 source->process(app, source);
@@ -309,10 +425,11 @@ void android_main(struct android_app* app) {
             }
         }
 
-        if (active) {
-            // Check menu button
+        if (engine.is_initialized) {
+            // Check menu button - return to launcher UI
             if (engine.touch_input.check_and_clear_menu_trigger()) {
-                LOGI("Menu toggled");
+                LOGI("Menu button pressed -> Returning to launcher");
+                return_to_launcher(engine.app);
             }
 
             // Step Libretro core with 1-frame RunAhead rollback
@@ -320,7 +437,7 @@ void android_main(struct android_app* app) {
                 engine.core_host.step_frame();
             }
 
-            // Render game and virtual controller overlay
+            // Render game frame and virtual controller overlay
             engine.renderer.render(engine.touch_input);
 
             // Present to display

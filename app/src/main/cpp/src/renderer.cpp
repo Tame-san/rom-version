@@ -366,32 +366,36 @@ void Renderer::render_touch_overlay(const TouchInput& touch_input) {
 
     // 1. Render Virtual D-Pad
     RenderableDpad dpad = touch_input.get_renderable_dpad();
-    // Outer base circle (semi-transparent dark)
-    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius, 0x22222288, 0.5f);
-    // Outer border
-    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius * 0.98f, 0x555555AA, 0.6f);
-    // Inner thumb knob (bright highlight when active)
-    uint32_t knob_color = dpad.active ? 0x00E5FFFF : 0xAAAAAA88;
-    draw_circle(dpad.knob_x, dpad.knob_y, dpad.knob_radius, knob_color, dpad.active ? 0.85f : 0.45f);
+    // Outer base circle
+    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius, 0x2A2A3ACC, 0.75f);
+    // Outer neon border
+    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius * 0.97f, 0x00E5FFCC, 0.85f);
+    // Inner base fill
+    draw_circle(dpad.center_x, dpad.center_y, dpad.base_radius * 0.92f, 0x1A1A24CC, 0.80f);
+    // Inner thumb knob (bright neon cyan when active, crisp silver when idle)
+    uint32_t knob_color = dpad.active ? 0x00FFFFFF : 0xDDDDDDFF;
+    draw_circle(dpad.knob_x, dpad.knob_y, dpad.knob_radius, knob_color, dpad.active ? 1.0f : 0.85f);
+    draw_circle(dpad.knob_x, dpad.knob_y, dpad.knob_radius * 0.4f, 0x00E5FFFF, 0.95f);
 
     // 2. Render Action Buttons
     const auto& buttons = touch_input.get_renderable_buttons();
     for (const auto& btn : buttons) {
-        float alpha = btn.pressed ? 0.95f : 0.50f;
-        float radius = btn.pressed ? (btn.radius * 0.95f) : btn.radius;
-        // Button shadow/glow
-        draw_circle(btn.x, btn.y, radius * 1.08f, 0x11111166, 0.4f);
+        float alpha = btn.pressed ? 1.0f : 0.85f;
+        float radius = btn.pressed ? (btn.radius * 0.93f) : btn.radius;
+        // Outer glow/ring
+        draw_circle(btn.x, btn.y, radius * 1.08f, 0xFFFFFF66, 0.6f);
         // Button body
         draw_circle(btn.x, btn.y, radius, btn.color_rgba, alpha);
-        // Inner core
-        draw_circle(btn.x, btn.y, radius * 0.35f, 0xFFFFFF66, alpha * 0.8f);
+        // Inner core highlight
+        draw_circle(btn.x, btn.y, radius * 0.38f, 0xFFFFFFFF, alpha * 0.9f);
     }
 
     // 3. Render Top Bar Buttons (Coin, Start, Menu)
     const auto& topbar = touch_input.get_renderable_topbar();
     for (const auto& tb : topbar) {
-        float alpha = tb.pressed ? 0.90f : 0.45f;
-        uint32_t bg_color = tb.is_menu_trigger ? 0xDD6622AA : 0x444444AA;
+        float alpha = tb.pressed ? 1.0f : 0.85f;
+        uint32_t bg_color = tb.is_menu_trigger ? 0xE65100EE : 0x1E88E5EE;
+        draw_rect(tb.x - 2, tb.y - 2, tb.width + 4, tb.height + 4, 0xFFFFFF88, 0.8f);
         draw_rect(tb.x, tb.y, tb.width, tb.height, bg_color, alpha);
     }
 

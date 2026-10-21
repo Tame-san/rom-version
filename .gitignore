@@ -20,5 +20,9 @@ local.properties
 *.apk
 *.aab
 
+# Native libraries in jniLibs
+app/src/main/jniLibs/**/*.so
+
 # Test binaries
 tests/test_engine
+
