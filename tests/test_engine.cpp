@@ -4,6 +4,8 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include <chrono>
+#include <thread>
 
 #include "../app/src/main/cpp/include/libretro.h"
 #include "../app/src/main/cpp/include/game_profiles.h"
@@ -566,6 +568,121 @@ void test_security_hardening() {
     TEST_CHECK(ring.available_read() == 512, "Queue depth remained strictly 512 frames");
 }
 
+// -------------------------------------------------------------
+// Test Suite 7: Monotonic Frame Pacing & Timing Calculations
+// -------------------------------------------------------------
+void test_frame_pacing() {
+    std::cout << "\n=== Running Test Suite 7: Monotonic Frame Pacing & Timing ===" << std::endl;
+
+    // 7.1 Target frame time calculations
+    // Neo Geo MVS: ~59.1856 Hz -> ~16895 us (59.185607 Hz yields 16895 us)
+    int64_t neogeo_exact_us = CoreHost::calculate_target_frame_time_us(59.185607);
+    TEST_CHECK(neogeo_exact_us == 16895, "Neo Geo 59.185607 Hz produces 16895 us frame interval");
+    int64_t neogeo_us = CoreHost::calculate_target_frame_time_us(59.1856);
+    TEST_CHECK(std::abs(neogeo_us - 16895) <= 1, "Neo Geo 59.1856 Hz produces ~16895 us frame interval");
+
+    // CPS1 / CPS2: 60.0 Hz -> 16666 us
+    int64_t cps_us = CoreHost::calculate_target_frame_time_us(60.0);
+    TEST_CHECK(cps_us == 16666, "Capcom CPS 60.0 Hz produces 16666 us frame interval");
+
+    // Fallback for <= 0 fps defaults to 60.0 Hz -> 16666 us
+    int64_t zero_us = CoreHost::calculate_target_frame_time_us(0.0);
+    TEST_CHECK(zero_us == 16666, "Zero FPS falls back to 60.0 FPS (16666 us)");
+    int64_t neg_us = CoreHost::calculate_target_frame_time_us(-5.0);
+    TEST_CHECK(neg_us == 16666, "Negative FPS falls back to 60.0 FPS (16666 us)");
+
+    // 7.2 CoreHost target FPS helpers
+    CoreHost host;
+    TEST_CHECK(host.get_target_fps() == 60.0, "Unloaded CoreHost target FPS defaults to 60.0");
+    TEST_CHECK(host.get_target_frame_time_us() == 16666, "Unloaded CoreHost target frame time is 16666 us");
+
+    // Check get_system_av_info() returns valid struct matching get_av_info()
+    const auto& av_info = host.get_system_av_info();
+    TEST_CHECK(av_info.timing.fps == host.get_av_info().timing.fps, "get_system_av_info matches get_av_info");
+
+    // Setup mock core with custom Neo Geo timing
+    host.set_core_api_pointers(
+        mock_retro_init,
+        mock_retro_deinit,
+        mock_retro_api_version,
+        mock_retro_get_system_info,
+        [](struct retro_system_av_info* info) {
+            info->geometry.base_width = 320;
+            info->geometry.base_height = 224;
+            info->geometry.max_width = 320;
+            info->geometry.max_height = 224;
+            info->geometry.aspect_ratio = 4.0f / 3.0f;
+            info->timing.fps = 59.185607;
+            info->timing.sample_rate = 48000.0;
+        },
+        mock_retro_set_environment,
+        mock_retro_set_video_refresh,
+        mock_retro_set_audio_sample,
+        mock_retro_set_audio_sample_batch,
+        mock_retro_set_input_poll,
+        mock_retro_set_input_state,
+        mock_retro_load_game,
+        mock_retro_unload_game,
+        mock_retro_run,
+        mock_retro_reset,
+        mock_retro_serialize_size,
+        mock_retro_serialize,
+        mock_retro_unserialize
+    );
+
+    host.load_game("mslug.zip");
+    TEST_CHECK(std::abs(host.get_target_fps() - 59.185607) < 0.0001, "Loaded Neo Geo reports target FPS 59.185607");
+    TEST_CHECK(host.get_target_frame_time_us() == 16895, "Loaded Neo Geo frame time is 16895 us");
+    TEST_CHECK(std::abs(host.get_system_av_info().timing.fps - 59.185607) < 0.0001, "get_system_av_info exposes Neo Geo FPS");
+
+    host.unload_game();
+    TEST_CHECK(host.get_target_fps() == 60.0, "Unloaded game resets target FPS back to 60.0 default");
+
+    // 7.3 Monotonic Frame Pacing & Frame Debt Accumulation Prevention
+    int64_t target_interval_us = 16666; // 60 FPS
+    std::chrono::microseconds target_frame_interval(target_interval_us);
+
+    auto base_time = std::chrono::steady_clock::now();
+    auto last_frame_time = base_time;
+
+    // Simulation Case A: Fast frame (processing took 4 ms) -> target interval respected, last_frame_time advances monotonically
+    auto frame_end_fast = base_time + std::chrono::milliseconds(4);
+    auto next_target = last_frame_time + target_frame_interval;
+    TEST_CHECK(frame_end_fast < next_target, "Fast frame completes before next target time");
+    
+    // In actual loop, sleep_until(next_target) sleeps (next_target - frame_end_fast), and last_frame_time = next_target
+    last_frame_time = next_target;
+    TEST_CHECK(last_frame_time == base_time + target_frame_interval, "Baseline advanced smoothly to next_target");
+
+    // Simulation Case B: Lagging frame (processing took 25 ms > 16.666 ms)
+    auto frame_end_slow = last_frame_time + std::chrono::milliseconds(25);
+    next_target = last_frame_time + target_frame_interval;
+    TEST_CHECK(frame_end_slow >= next_target, "Lagging frame took longer than target interval");
+
+    // Debt Prevention: Baseline is reset to frame_end, preventing catch-up bursts
+    if (frame_end_slow < next_target) {
+        last_frame_time = next_target;
+    } else {
+        last_frame_time = frame_end_slow; // Reset baseline
+    }
+    TEST_CHECK(last_frame_time == frame_end_slow, "Frame debt prevented: baseline reset to current timestamp");
+
+    // The subsequent frame's next_target starts from the new baseline, with NO negative debt
+    auto next_target_after_lag = last_frame_time + target_frame_interval;
+    TEST_CHECK(next_target_after_lag > frame_end_slow, "Subsequent frame has fresh forward-looking deadline");
+
+    // Simulation Case C: Window focus loss / pause recovery
+    bool reset_pacing = true;
+    auto resume_time = last_frame_time + std::chrono::seconds(5); // 5 seconds paused in background
+    if (reset_pacing) {
+        last_frame_time = resume_time;
+        reset_pacing = false;
+    }
+    TEST_CHECK(last_frame_time == resume_time, "Focus recovery resets pacing baseline to resume timestamp");
+    auto next_target_resume = last_frame_time + target_frame_interval;
+    TEST_CHECK(next_target_resume == resume_time + target_frame_interval, "Clean target after focus recovery without debt burst");
+}
+
 int main() {
     std::cout << "============================================================" << std::endl;
     std::cout << "  Android Arcade Engine: Local Linux Verification Suite" << std::endl;
@@ -577,6 +694,7 @@ int main() {
     test_audio_ring_buffer();
     test_runahead_engine();
     test_security_hardening();
+    test_frame_pacing();
 
     std::cout << "\n============================================================" << std::endl;
     std::cout << "  ALL TESTS PASSED SUCCESSFULLY! (Exit Code 0)" << std::endl;

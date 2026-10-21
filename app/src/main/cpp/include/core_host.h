@@ -53,7 +53,14 @@ public:
     bool is_game_loaded() const { return game_loaded_; }
     const GameProfile& get_active_profile() const { return active_profile_; }
     const struct retro_system_av_info& get_av_info() const { return av_info_; }
+    const struct retro_system_av_info& get_system_av_info() const { return av_info_; }
     double get_fps() const { return av_info_.timing.fps; }
+    double get_target_fps() const { return (av_info_.timing.fps > 0.0) ? av_info_.timing.fps : 60.0; }
+    int64_t get_target_frame_time_us() const { return calculate_target_frame_time_us(av_info_.timing.fps); }
+    static int64_t calculate_target_frame_time_us(double fps) {
+        double effective_fps = (fps > 0.0) ? fps : 60.0;
+        return static_cast<int64_t>(1000000.0 / effective_fps);
+    }
 
     // Path validation helpers (Anti-path traversal & sandbox validation)
     static bool is_safe_rom_path(const std::string& path);
