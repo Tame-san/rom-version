@@ -409,22 +409,50 @@ public class MainActivity extends Activity {
     }
 
     private void scanCommonPhonePaths() {
-        String[] paths = {
-            "/sdcard/roms/mslug.zip",
-            "/storage/emulated/0/roms/mslug.zip",
-            "/sdcard/Download/roms/mslug.zip",
-            "/storage/emulated/0/Download/roms/mslug.zip",
-            "/sdcard/Download/mslug.zip",
-            "/storage/emulated/0/Download/mslug.zip"
+        String[] candidateDirs = {
+            "/sdcard/Download/Roms",
+            "/storage/emulated/0/Download/Roms",
+            "/sdcard/Download/roms",
+            "/storage/emulated/0/Download/roms",
+            "/sdcard/roms",
+            "/storage/emulated/0/roms",
+            "/sdcard/Roms",
+            "/storage/emulated/0/Roms"
         };
-        for (String p : paths) {
-            File f = new File(p);
-            if (f.exists() && f.canRead()) {
-                String friendly = "Metal Slug (Phone: " + f.getParent() + ")";
-                gameList.add(new GameItem(friendly, "mslug.zip", null, f.getAbsolutePath()));
-                displayNames.add(friendly);
-                listAdapter.notifyDataSetChanged();
-                break;
+        for (String dirPath : candidateDirs) {
+            File dir = new File(dirPath);
+            if (dir.exists() && dir.isDirectory() && dir.canRead()) {
+                File[] zips = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".zip"));
+                if (zips != null && zips.length > 0) {
+                    for (File z : zips) {
+                        String name = z.getName();
+                        if (name.equalsIgnoreCase("neogeo.zip")) {
+                            File targetBios = new File(getBiosDir(), "neogeo.zip");
+                            if (!targetBios.exists() || targetBios.length() < 1000) {
+                                try {
+                                    java.nio.file.Files.copy(z.toPath(), targetBios.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                } catch (Exception ignored) {}
+                            }
+                            continue;
+                        }
+                        String friendly = formatFriendlyName(name);
+                        boolean exists = false;
+                        for (GameItem item : gameList) {
+                            if (item.fileName.equalsIgnoreCase(name)) {
+                                exists = true;
+                                break;
+                            }
+                        }
+                        if (!exists) {
+                            gameList.add(new GameItem(friendly, name, null, z.getAbsolutePath()));
+                            displayNames.add(friendly);
+                        }
+                    }
+                    listAdapter.notifyDataSetChanged();
+                    tvRomStatus.setText("Found " + gameList.size() + " arcade game(s) in " + dir.getName());
+                    updateBiosStatus();
+                    break;
+                }
             }
         }
     }
