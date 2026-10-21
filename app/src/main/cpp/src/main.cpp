@@ -34,6 +34,7 @@ struct EngineContext {
     int32_t height = 0;
     bool has_focus = false;
     bool is_initialized = false;
+    bool reset_pacing = true;
 
     arcade::TouchInput touch_input;
     arcade::AudioEngine audio_engine;
@@ -436,19 +437,31 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
         case APP_CMD_INIT_WINDOW:
             if (engine->app->window != nullptr) {
                 init_display(engine);
+                engine->reset_pacing = true;
             }
             break;
 
         case APP_CMD_TERM_WINDOW:
             term_display(engine);
+            engine->reset_pacing = true;
             break;
 
         case APP_CMD_GAINED_FOCUS:
             engine->has_focus = true;
+            engine->reset_pacing = true;
             break;
 
         case APP_CMD_LOST_FOCUS:
             engine->has_focus = false;
+            engine->reset_pacing = true;
+            break;
+
+        case APP_CMD_PAUSE:
+            engine->reset_pacing = true;
+            break;
+
+        case APP_CMD_RESUME:
+            engine->reset_pacing = true;
             break;
 
         case APP_CMD_CONFIG_CHANGED: {
@@ -477,6 +490,8 @@ void android_main(struct android_app* app) {
 
     LOGI("Ultra-Low-Latency Android Arcade Engine starting");
 
+    std::chrono::steady_clock::time_point last_frame_time = std::chrono::steady_clock::now();
+
     while (true) {
         int ident;
         int events;
@@ -501,6 +516,20 @@ void android_main(struct android_app* app) {
                 return_to_launcher(engine.app);
             }
 
+            // Obtain target FPS from engine.core_host.get_system_av_info().timing.fps (default to 60.0 if <= 0)
+            double fps = engine.core_host.get_system_av_info().timing.fps;
+            if (fps <= 0.0) {
+                fps = 60.0;
+            }
+            int64_t target_frame_time_us = static_cast<int64_t>(1000000.0 / fps);
+            std::chrono::microseconds target_frame_interval(target_frame_time_us);
+
+            auto frame_start = std::chrono::steady_clock::now();
+            if (engine.reset_pacing) {
+                last_frame_time = frame_start;
+                engine.reset_pacing = false;
+            }
+
             // Step Libretro core with 1-frame RunAhead rollback
             if (engine.core_host.is_game_loaded()) {
                 engine.core_host.step_frame();
@@ -511,6 +540,22 @@ void android_main(struct android_app* app) {
 
             // Present to display
             eglSwapBuffers(engine.display, engine.surface);
+
+            // Measure frame processing time and sleep the remaining time
+            auto frame_end = std::chrono::steady_clock::now();
+            auto frame_duration = std::chrono::duration_cast<std::chrono::microseconds>(frame_end - frame_start);
+            (void)frame_duration;
+
+            auto next_target = last_frame_time + target_frame_interval;
+            if (frame_end < next_target) {
+                std::this_thread::sleep_until(next_target);
+                last_frame_time = next_target;
+            } else {
+                // Prevent frame debt accumulation: if the frame took longer than target
+                // (or after app pauses/window focus loss), reset the baseline timestamp
+                // rather than running rapid catch-up frames.
+                last_frame_time = frame_end;
+            }
         }
     }
 }

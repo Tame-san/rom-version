@@ -531,6 +531,7 @@ void CoreHost::unload_game() {
     state_size_ = 0;
     canonical_state_.clear();
     runahead_active_ = false;
+    std::memset(&av_info_, 0, sizeof(av_info_));
 }
 
 void CoreHost::reset() {
