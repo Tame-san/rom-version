@@ -202,3 +202,21 @@ When resuming in a new chat, the following enhancements are ready to be implemen
 
 4. **Neo Geo Universe BIOS & DIP Switch Menu**:
    - Expose core options in `core_host.cpp` to toggle between MVS (Arcade) and AES (Console) mode, and enable Uni-BIOS cheat engine.
+
+---
+
+## 6. Security Audit & Hardening Status (Completed)
+
+An exhaustive security audit was executed against CWE/SANS Top 25 and OWASP Mobile Top 10 standards. All identified vulnerabilities have been remediated and verified:
+
+| Finding ID | Vulnerability Category | Mitigation Applied |
+| :--- | :--- | :--- |
+| **SEC-FIND-01** | Unprotected Exported Native Activity (CWE-926) | Set `android:exported="false"` on `ArcadeActivity` in [`AndroidManifest.xml`](file:///home/the-dev/repos/rom-version/app/src/main/AndroidManifest.xml#L69). |
+| **SEC-FIND-02** | Path Traversal / Arbitrary File Overwrite (CWE-22, CWE-73) | Sanitized URI filenames and enforced canonical path boundary checks in [`MainActivity.java`](file:///home/the-dev/repos/rom-version/app/src/main/java/com/arcade/engine/MainActivity.java#L460-L479). |
+| **SEC-FIND-03** | Unallocated Texture Upload on Resume (CWE-665, CWE-703) | Reset texture dimensions in `Renderer::shutdown` and invoke `shutdown()` during `term_display` in [`renderer.cpp`](file:///home/the-dev/repos/rom-version/app/src/main/cpp/src/renderer.cpp#L230-L235) and [`main.cpp`](file:///home/the-dev/repos/rom-version/app/src/main/cpp/src/main.cpp#L370). |
+| **SEC-FIND-04** | JNI Local Reference Table Leaks (CWE-401, CWE-775) | Added `DeleteLocalRef` for `app_info_class` and `intent_class` in [`main.cpp`](file:///home/the-dev/repos/rom-version/app/src/main/cpp/src/main.cpp#L99-L138). |
+| **SEC-FIND-05** | Uncontrolled Background Execution & Audio Leak (CWE-400) | Stopped AAudio stream on `APP_CMD_PAUSE` and gated frame stepping with `engine.is_initialized && engine.has_focus` in [`main.cpp`](file:///home/the-dev/repos/rom-version/app/src/main/cpp/src/main.cpp#L464-L521). |
+| **SEC-FIND-06** | Missing Upper-Bound on Savestate Allocations (CWE-400, CWE-190) | Enforced 64MB upper bound `MAX_SAFE_STATE_SIZE` on serialize size in [`core_host.cpp`](file:///home/the-dev/repos/rom-version/app/src/main/cpp/src/core_host.cpp#L21-L22). |
+| **SEC-FIND-07** | Directory Traversal in Native Directory Setters (CWE-22) | Rejected `..` sequences in `set_system_directory` and `set_save_directory` in [`core_host.h`](file:///home/the-dev/repos/rom-version/app/src/main/cpp/include/core_host.h#L45-L54). |
+| **SEC-FIND-08** | Zip Slip Edge Cases with `.` and `..` (CWE-22) | Explicitly filtered `..` and `.` entries in `needsNormalization` and `normalizeZipEntries` in [`RomNormalizer.java`](file:///home/the-dev/repos/rom-version/app/src/main/java/com/arcade/engine/RomNormalizer.java#L125-L182). |
+
