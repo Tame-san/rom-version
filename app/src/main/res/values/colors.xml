@@ -12,4 +12,21 @@
     <color name="accent_badge_bg">#2B2312</color>
     <color name="accent_badge_border">#E8A702</color>
     <color name="status_green">#34D399</color>
+
+    <!-- Platform Badge Accents -->
+    <color name="badge_neogeo_bg">#2B2312</color>
+    <color name="badge_neogeo_border">#E8A702</color>
+    <color name="badge_neogeo_text">#E8A702</color>
+
+    <color name="badge_cps_bg">#162232</color>
+    <color name="badge_cps_border">#38BDF8</color>
+    <color name="badge_cps_text">#38BDF8</color>
+
+    <color name="badge_pgm_bg">#261A30</color>
+    <color name="badge_pgm_border">#C084FC</color>
+    <color name="badge_pgm_text">#C084FC</color>
+
+    <color name="badge_arcade_bg">#202228</color>
+    <color name="badge_arcade_border">#4B5563</color>
+    <color name="badge_arcade_text">#9CA3AF</color>
 </resources>

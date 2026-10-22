@@ -6,11 +6,14 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -22,7 +25,9 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends Activity {
 
@@ -33,10 +38,13 @@ public class MainActivity extends Activity {
     private TextView tvRomStatus;
     private Button btnSelectRom;
     private Button btnSelectFolder;
+    private EditText etSearch;
     private ListView lvGames;
 
-    private List<GameItem> gameList = new ArrayList<>();
+    private final List<GameItem> masterList = new ArrayList<>();
+    private final List<GameItem> displayList = new ArrayList<>();
     private GameAdapter gameAdapter;
+    private String currentSearchQuery = "";
 
     private static class GameItem {
         String name;
@@ -63,12 +71,12 @@ public class MainActivity extends Activity {
 
         @Override
         public int getCount() {
-            return gameList.size();
+            return displayList.size();
         }
 
         @Override
         public GameItem getItem(int position) {
-            return gameList.get(position);
+            return displayList.get(position);
         }
 
         @Override
@@ -96,6 +104,21 @@ public class MainActivity extends Activity {
             holder.system.setText(item.systemTag);
             holder.filename.setText(item.fileName);
 
+            // Dynamic platform badge accents
+            if ("NEO GEO".equals(item.systemTag)) {
+                holder.system.setBackgroundResource(R.drawable.bg_badge_neogeo);
+                holder.system.setTextColor(0xFFE8A702);
+            } else if ("CPS-1".equals(item.systemTag) || "CPS-2".equals(item.systemTag)) {
+                holder.system.setBackgroundResource(R.drawable.bg_badge_cps);
+                holder.system.setTextColor(0xFF38BDF8);
+            } else if ("PGM".equals(item.systemTag)) {
+                holder.system.setBackgroundResource(R.drawable.bg_badge_pgm);
+                holder.system.setTextColor(0xFFC084FC);
+            } else {
+                holder.system.setBackgroundResource(R.drawable.bg_badge_arcade);
+                holder.system.setTextColor(0xFF9CA3AF);
+            }
+
             View.OnClickListener clickListener = v -> launchGameItem(item);
             convertView.setOnClickListener(clickListener);
             holder.playBtn.setOnClickListener(clickListener);
@@ -111,6 +134,31 @@ public class MainActivity extends Activity {
         TextView playBtn;
     }
 
+    private void applyFilter(String query) {
+        currentSearchQuery = query == null ? "" : query.trim().toLowerCase();
+        displayList.clear();
+        if (currentSearchQuery.isEmpty()) {
+            displayList.addAll(masterList);
+        } else {
+            for (GameItem item : masterList) {
+                boolean matchTitle = item.name != null && item.name.toLowerCase().contains(currentSearchQuery);
+                boolean matchFile = item.fileName != null && item.fileName.toLowerCase().contains(currentSearchQuery);
+                boolean matchSystem = item.systemTag != null && item.systemTag.toLowerCase().contains(currentSearchQuery);
+                if (matchTitle || matchFile || matchSystem) {
+                    displayList.add(item);
+                }
+            }
+        }
+        gameAdapter.notifyDataSetChanged();
+        if (masterList.isEmpty()) {
+            tvRomStatus.setText("Ready to load game");
+        } else if (!currentSearchQuery.isEmpty()) {
+            tvRomStatus.setText("Showing " + displayList.size() + " of " + masterList.size() + " games");
+        } else {
+            tvRomStatus.setText("Found " + masterList.size() + " arcade game(s)");
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -120,6 +168,7 @@ public class MainActivity extends Activity {
         tvRomStatus = findViewById(R.id.tv_rom_status);
         btnSelectRom = findViewById(R.id.btn_select_rom);
         btnSelectFolder = findViewById(R.id.btn_select_folder);
+        etSearch = findViewById(R.id.et_search);
         lvGames = findViewById(R.id.lv_games);
 
         gameAdapter = new GameAdapter();
@@ -128,9 +177,22 @@ public class MainActivity extends Activity {
         btnSelectRom.setOnClickListener(v -> openFilePicker());
         btnSelectFolder.setOnClickListener(v -> openFolderPicker());
 
+        etSearch.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                applyFilter(s == null ? "" : s.toString());
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        });
+
         lvGames.setOnItemClickListener((parent, view, position, id) -> {
-            if (position >= 0 && position < gameList.size()) {
-                launchGameItem(gameList.get(position));
+            if (position >= 0 && position < displayList.size()) {
+                launchGameItem(displayList.get(position));
             }
         });
 
@@ -293,34 +355,44 @@ public class MainActivity extends Activity {
 
     private static String detectSystem(String fileName) {
         if (fileName == null) return "ARCADE";
-        String base = fileName.toLowerCase().replace(".zip", "");
+        String base = fileName.toLowerCase();
+        if (base.endsWith(".zip")) {
+            base = base.substring(0, base.length() - 4);
+        }
+
         String[] neoGeoPrefixes = {
             "mslug", "kof", "garou", "lastbld", "samsho", "rbff", "sengoku",
-            "wjammers", "spinmast", "nam1975", "fatfur", "aof", "neogal"
+            "wjammers", "spinmast", "nam1975", "fatfury", "fatfur", "aof", "neogal",
+            "shocktro", "shocktr", "blazstar", "pulstar"
         };
         for (String prefix : neoGeoPrefixes) {
             if (base.startsWith(prefix)) return "NEO GEO";
         }
-        String[] cps1Prefixes = {
-            "sf2", "dino", "punisher", "cworld2", "ffight", "ghouls", "strider",
-            "mercs", "captcomm"
-        };
-        for (String prefix : cps1Prefixes) {
-            if (base.startsWith(prefix)) return "CPS-1";
-        }
+
         String[] cps2Prefixes = {
-            "sfa", "sfa2", "sfa3", "vsav", "mvsc", "xmcota", "msh", "mshvsf",
-            "xmvsf", "dstlk", "nwarr", "progear", "1944", "ddsom", "ddtod"
+            "sfa", "vsav", "mvsc", "xmcota", "msh", "mshvsf", "xmvsf",
+            "dstlk", "nwarr", "progear", "1944", "ddsom", "ddtod", "ssf2",
+            "vhunt2", "armwar", "cybots", "avsp", "jojoba"
         };
         for (String prefix : cps2Prefixes) {
             if (base.startsWith(prefix)) return "CPS-2";
         }
+
+        String[] cps1Prefixes = {
+            "sf2", "dino", "punisher", "cworld2", "ffight", "ghouls", "strider",
+            "mercs", "captcomm", "wof"
+        };
+        for (String prefix : cps1Prefixes) {
+            if (base.startsWith(prefix)) return "CPS-1";
+        }
+
         String[] pgmPrefixes = {
-            "martmast", "kov", "orlegend", "svg"
+            "martmast", "kov", "orlegend", "svg", "drgw2", "demonwld"
         };
         for (String prefix : pgmPrefixes) {
             if (base.startsWith(prefix)) return "PGM";
         }
+
         return "ARCADE";
     }
 
@@ -453,17 +525,16 @@ public class MainActivity extends Activity {
             }
 
             runOnUiThread(() -> {
-                gameList.clear();
+                masterList.clear();
 
                 for (DocumentFile f : zipFiles) {
                     String name = f.getName();
                     String friendly = formatFriendlyName(name);
-                    gameList.add(new GameItem(friendly, name, f.getUri(), null, detectSystem(name)));
+                    masterList.add(new GameItem(friendly, name, f.getUri(), null, detectSystem(name)));
                 }
 
-                gameAdapter.notifyDataSetChanged();
+                applyFilter(etSearch != null && etSearch.getText() != null ? etSearch.getText().toString() : "");
                 updateBiosStatus();
-                tvRomStatus.setText("Found " + gameList.size() + " arcade game(s) in selected folder");
             });
         }).start();
     }
@@ -472,22 +543,26 @@ public class MainActivity extends Activity {
         File[] files = getRomsDir().listFiles((dir, name) -> name.toLowerCase().endsWith(".zip"));
         if (files == null) return;
 
+        boolean added = false;
         for (File f : files) {
             String name = f.getName();
             if (name.equalsIgnoreCase("neogeo.zip")) continue;
-            String friendly = formatFriendlyName(name);
             boolean exists = false;
-            for (GameItem item : gameList) {
+            for (GameItem item : masterList) {
                 if (item.fileName.equalsIgnoreCase(name)) {
                     exists = true;
                     break;
                 }
             }
             if (!exists) {
-                gameList.add(new GameItem(friendly, name, null, f.getAbsolutePath(), detectSystem(name)));
+                String friendly = formatFriendlyName(name);
+                masterList.add(new GameItem(friendly, name, null, f.getAbsolutePath(), detectSystem(name)));
+                added = true;
             }
         }
-        gameAdapter.notifyDataSetChanged();
+        if (added) {
+            applyFilter(etSearch != null && etSearch.getText() != null ? etSearch.getText().toString() : "");
+        }
     }
 
     private void scanCommonPhonePaths() {
@@ -506,6 +581,7 @@ public class MainActivity extends Activity {
             if (dir.exists() && dir.isDirectory() && dir.canRead()) {
                 File[] zips = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".zip"));
                 if (zips != null && zips.length > 0) {
+                    boolean added = false;
                     for (File z : zips) {
                         String name = z.getName();
                         if (name.equalsIgnoreCase("neogeo.zip")) {
@@ -517,20 +593,22 @@ public class MainActivity extends Activity {
                             }
                             continue;
                         }
-                        String friendly = formatFriendlyName(name);
                         boolean exists = false;
-                        for (GameItem item : gameList) {
+                        for (GameItem item : masterList) {
                             if (item.fileName.equalsIgnoreCase(name)) {
                                 exists = true;
                                 break;
                             }
                         }
                         if (!exists) {
-                            gameList.add(new GameItem(friendly, name, null, z.getAbsolutePath(), detectSystem(name)));
+                            String friendly = formatFriendlyName(name);
+                            masterList.add(new GameItem(friendly, name, null, z.getAbsolutePath(), detectSystem(name)));
+                            added = true;
                         }
                     }
-                    gameAdapter.notifyDataSetChanged();
-                    tvRomStatus.setText("Found " + gameList.size() + " arcade game(s) in " + dir.getName());
+                    if (added) {
+                        applyFilter(etSearch != null && etSearch.getText() != null ? etSearch.getText().toString() : "");
+                    }
                     updateBiosStatus();
                     break;
                 }
@@ -538,29 +616,125 @@ public class MainActivity extends Activity {
         }
     }
 
-    private String formatFriendlyName(String fileName) {
-        String base = fileName.toLowerCase().replace(".zip", "");
-        switch (base) {
-            case "mslug": return "Metal Slug - Super Vehicle-001 (Neo Geo)";
-            case "mslug2": return "Metal Slug 2 (Neo Geo)";
-            case "mslugx": return "Metal Slug X (Neo Geo)";
-            case "mslug5": return "Metal Slug 5 (Neo Geo)";
-            case "garou": return "Garou: Mark of the Wolves (Neo Geo)";
-            case "kof96": return "The King of Fighters '96 (Neo Geo)";
-            case "kof97": return "The King of Fighters '97 (Neo Geo)";
-            case "kof98": return "The King of Fighters '98 (Neo Geo)";
-            case "kof99": return "The King of Fighters '99 (Neo Geo)";
-            case "kof2000": return "The King of Fighters 2000 (Neo Geo)";
-            case "kof2002": return "The King of Fighters 2002 (Neo Geo)";
-            case "lastbld2": return "The Last Blade 2 (Neo Geo)";
-            case "samsho4": return "Samurai Shodown IV (Neo Geo)";
-            case "sf2": return "Street Fighter II: The World Warrior (CPS1)";
-            case "sfa2": return "Street Fighter Alpha 2 (CPS2)";
-            case "dino": return "Cadillacs and Dinosaurs (CPS1)";
-            case "punisher": return "The Punisher (CPS1)";
-            case "martmast": return "Martial Masters (PGM)";
-            default: return fileName;
+    private static final Map<String, String> GAME_DICTIONARY = new HashMap<>();
+    static {
+        // Neo Geo
+        GAME_DICTIONARY.put("mslug", "Metal Slug - Super Vehicle-001");
+        GAME_DICTIONARY.put("mslug2", "Metal Slug 2");
+        GAME_DICTIONARY.put("mslugx", "Metal Slug X");
+        GAME_DICTIONARY.put("mslug3", "Metal Slug 3");
+        GAME_DICTIONARY.put("mslug4", "Metal Slug 4");
+        GAME_DICTIONARY.put("mslug5", "Metal Slug 5");
+        GAME_DICTIONARY.put("kof94", "The King of Fighters '94");
+        GAME_DICTIONARY.put("kof95", "The King of Fighters '95");
+        GAME_DICTIONARY.put("kof96", "The King of Fighters '96");
+        GAME_DICTIONARY.put("kof97", "The King of Fighters '97");
+        GAME_DICTIONARY.put("kof98", "The King of Fighters '98");
+        GAME_DICTIONARY.put("kof99", "The King of Fighters '99");
+        GAME_DICTIONARY.put("kof2000", "The King of Fighters 2000");
+        GAME_DICTIONARY.put("kof2001", "The King of Fighters 2001");
+        GAME_DICTIONARY.put("kof2002", "The King of Fighters 2002");
+        GAME_DICTIONARY.put("kof2003", "The King of Fighters 2003");
+        GAME_DICTIONARY.put("garou", "Garou: Mark of the Wolves");
+        GAME_DICTIONARY.put("lastbld", "The Last Blade");
+        GAME_DICTIONARY.put("lastbld2", "The Last Blade 2");
+        GAME_DICTIONARY.put("samsho", "Samurai Shodown");
+        GAME_DICTIONARY.put("samsho2", "Samurai Shodown II");
+        GAME_DICTIONARY.put("samsho3", "Samurai Shodown III");
+        GAME_DICTIONARY.put("samsho4", "Samurai Shodown IV");
+        GAME_DICTIONARY.put("samsho5", "Samurai Shodown V");
+        GAME_DICTIONARY.put("rbff", "Real Bout Fatal Fury");
+        GAME_DICTIONARY.put("rbffspec", "Real Bout Fatal Fury Special");
+        GAME_DICTIONARY.put("rbff2", "Real Bout Fatal Fury 2");
+        GAME_DICTIONARY.put("fatfury1", "Fatal Fury");
+        GAME_DICTIONARY.put("fatfury2", "Fatal Fury 2");
+        GAME_DICTIONARY.put("fatfury3", "Fatal Fury 3");
+        GAME_DICTIONARY.put("fatfursp", "Fatal Fury Special");
+        GAME_DICTIONARY.put("aof", "Art of Fighting");
+        GAME_DICTIONARY.put("aof2", "Art of Fighting 2");
+        GAME_DICTIONARY.put("aof3", "Art of Fighting 3");
+        GAME_DICTIONARY.put("wjammers", "Windjammers");
+        GAME_DICTIONARY.put("spinmast", "Spinmaster");
+        GAME_DICTIONARY.put("nam1975", "NAM-1975");
+        GAME_DICTIONARY.put("sengoku", "Sengoku");
+        GAME_DICTIONARY.put("sengoku2", "Sengoku 2");
+        GAME_DICTIONARY.put("sengoku3", "Sengoku 3");
+        GAME_DICTIONARY.put("shocktro", "Shock Troopers");
+        GAME_DICTIONARY.put("shocktr2", "Shock Troopers: 2nd Squad");
+        GAME_DICTIONARY.put("blazstar", "Blazing Star");
+        GAME_DICTIONARY.put("pulstar", "Pulstar");
+
+        // Capcom CPS-1 / CPS-2
+        GAME_DICTIONARY.put("sf2", "Street Fighter II: The World Warrior");
+        GAME_DICTIONARY.put("sf2ce", "Street Fighter II': Champion Edition");
+        GAME_DICTIONARY.put("sf2hf", "Street Fighter II' Turbo: Hyper Fighting");
+        GAME_DICTIONARY.put("ssf2", "Super Street Fighter II: The New Challengers");
+        GAME_DICTIONARY.put("ssf2t", "Super Street Fighter II Turbo");
+        GAME_DICTIONARY.put("sfa", "Street Fighter Alpha");
+        GAME_DICTIONARY.put("sfa2", "Street Fighter Alpha 2");
+        GAME_DICTIONARY.put("sfa3", "Street Fighter Alpha 3");
+        GAME_DICTIONARY.put("dstlk", "Darkstalkers: The Night Warriors");
+        GAME_DICTIONARY.put("nwarr", "Night Warriors: Darkstalkers' Revenge");
+        GAME_DICTIONARY.put("vsav", "Vampire Savior: The Lord of Vampire");
+        GAME_DICTIONARY.put("vsav2", "Vampire Savior 2: The Lord of Vampire");
+        GAME_DICTIONARY.put("vhunt2", "Vampire Hunter 2: Darkstalkers' Revenge");
+        GAME_DICTIONARY.put("xmcota", "X-Men: Children of the Atom");
+        GAME_DICTIONARY.put("msh", "Marvel Super Heroes");
+        GAME_DICTIONARY.put("xmvsf", "X-Men vs. Street Fighter");
+        GAME_DICTIONARY.put("mshvsf", "Marvel Super Heroes vs. Street Fighter");
+        GAME_DICTIONARY.put("mvsc", "Marvel vs. Capcom: Clash of Super Heroes");
+        GAME_DICTIONARY.put("dino", "Cadillacs and Dinosaurs");
+        GAME_DICTIONARY.put("punisher", "The Punisher");
+        GAME_DICTIONARY.put("captcomm", "Captain Commando");
+        GAME_DICTIONARY.put("ffight", "Final Fight");
+        GAME_DICTIONARY.put("wof", "Warriors of Fate");
+        GAME_DICTIONARY.put("armwar", "Armored Warriors");
+        GAME_DICTIONARY.put("cybots", "Cyberbots: Fullmetal Madness");
+        GAME_DICTIONARY.put("progear", "Progear");
+        GAME_DICTIONARY.put("1944", "1944: The Loop Master");
+        GAME_DICTIONARY.put("ddtod", "Dungeons & Dragons: Tower of Doom");
+        GAME_DICTIONARY.put("ddsom", "Dungeons & Dragons: Shadow over Mystara");
+        GAME_DICTIONARY.put("avsp", "Alien vs. Predator");
+        GAME_DICTIONARY.put("jojoba", "JoJo's Bizarre Adventure");
+
+        // IGS PGM
+        GAME_DICTIONARY.put("martmast", "Martial Masters");
+        GAME_DICTIONARY.put("kov", "Knights of Valour");
+        GAME_DICTIONARY.put("kovplus", "Knights of Valour Plus");
+        GAME_DICTIONARY.put("orlegend", "Oriental Legend");
+        GAME_DICTIONARY.put("svg", "Spectral vs. Generation");
+        GAME_DICTIONARY.put("drgw2", "Dragon World II");
+        GAME_DICTIONARY.put("demonwld", "Demon Front");
+    }
+
+    private static String formatFriendlyName(String fileName) {
+        if (fileName == null) return "";
+        String base = fileName.toLowerCase();
+        if (base.endsWith(".zip")) {
+            base = base.substring(0, base.length() - 4);
         }
+        if (GAME_DICTIONARY.containsKey(base)) {
+            return GAME_DICTIONARY.get(base);
+        }
+        // Fallback: strip .zip, replace _ and - with spaces, convert to title case
+        String cleaned = base.replace('_', ' ').replace('-', ' ').trim();
+        return toTitleCase(cleaned);
+    }
+
+    private static String toTitleCase(String text) {
+        if (text == null || text.isEmpty()) return "";
+        String[] words = text.split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String w : words) {
+            if (!w.isEmpty()) {
+                if (sb.length() > 0) sb.append(' ');
+                sb.append(Character.toUpperCase(w.charAt(0)));
+                if (w.length() > 1) {
+                    sb.append(w.substring(1).toLowerCase());
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private void launchGameItem(GameItem item) {
