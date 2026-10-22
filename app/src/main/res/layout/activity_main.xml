@@ -66,11 +66,11 @@
         <Button
             android:id="@+id/btn_select_rom"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="40dp"
             android:layout_weight="1"
             android:text="SELECT ROM"
-            android:background="@drawable/bg_btn_primary"
-            android:textColor="#121316"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
             android:textSize="13sp"
             android:textStyle="bold"
             android:layout_marginEnd="8dp"
@@ -80,7 +80,7 @@
         <Button
             android:id="@+id/btn_select_folder"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="40dp"
             android:layout_weight="1"
             android:text="SELECT FOLDER"
             android:background="@drawable/bg_btn_secondary"
@@ -100,6 +100,24 @@
         android:textStyle="bold"
         android:letterSpacing="0.08"
         android:layout_marginBottom="8dp" />
+
+    <!-- Search Input -->
+    <EditText
+        android:id="@+id/et_search"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:background="@drawable/bg_search_input"
+        android:hint="Search games..."
+        android:textColorHint="@color/text_secondary"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"
+        android:singleLine="true"
+        android:maxLines="1"
+        android:inputType="text"
+        android:paddingHorizontal="12dp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:layout_marginBottom="12dp" />
 
     <!-- Game List -->
     <ListView
