@@ -96,6 +96,7 @@ static std::string get_core_path(struct android_app* app) {
                     env->DeleteLocalRef(dir_jstr);
                 }
             }
+            env->DeleteLocalRef(app_info_class);
             env->DeleteLocalRef(app_info);
         }
     }
@@ -134,6 +135,7 @@ static std::string get_intent_string_extra(struct android_app* app, const char* 
                     env->DeleteLocalRef(val);
                 }
             }
+            env->DeleteLocalRef(intent_class);
             env->DeleteLocalRef(intent);
         }
     }
@@ -366,6 +368,8 @@ static int init_display(EngineContext* engine) {
 }
 
 static void term_display(EngineContext* engine) {
+    if (!engine) return;
+    engine->renderer.shutdown();
     if (engine->display != EGL_NO_DISPLAY) {
         eglMakeCurrent(engine->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         if (engine->context != EGL_NO_CONTEXT) {
@@ -457,10 +461,15 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
             break;
 
         case APP_CMD_PAUSE:
+            engine->has_focus = false;
+            engine->audio_engine.stop();
             engine->reset_pacing = true;
             break;
 
         case APP_CMD_RESUME:
+            if (engine->core_host.is_game_loaded() && !engine->audio_engine.is_running()) {
+                engine->audio_engine.start(engine->audio_engine.get_sample_rate(), 2);
+            }
             engine->reset_pacing = true;
             break;
 
@@ -497,8 +506,8 @@ void android_main(struct android_app* app) {
         int events;
         struct android_poll_source* source;
 
-        // Poll events: non-blocking when initialized, blocking when surface not yet ready
-        while ((ident = ALooper_pollOnce(engine.is_initialized ? 0 : -1, nullptr, &events, (void**)&source)) >= 0) {
+        // Poll events: non-blocking when initialized & focused, blocking when surface not yet ready or unfocused
+        while ((ident = ALooper_pollOnce((engine.is_initialized && engine.has_focus) ? 0 : -1, nullptr, &events, (void**)&source)) >= 0) {
             if (source != nullptr) {
                 source->process(app, source);
             }
@@ -509,7 +518,7 @@ void android_main(struct android_app* app) {
             }
         }
 
-        if (engine.is_initialized) {
+        if (engine.is_initialized && engine.has_focus) {
             // Check menu button - return to launcher UI
             if (engine.touch_input.check_and_clear_menu_trigger()) {
                 LOGI("Menu button pressed -> Returning to launcher");

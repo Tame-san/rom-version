@@ -227,6 +227,10 @@ void Renderer::shutdown() {
     if (overlay_vao_) { glDeleteVertexArrays(1, &overlay_vao_); overlay_vao_ = 0; }
     if (overlay_program_) { glDeleteProgram(overlay_program_); overlay_program_ = 0; }
 #endif
+    last_tex_w_ = 0;
+    last_tex_h_ = 0;
+    last_tex_format_ = 0;
+    has_new_frame_ = false;
     initialized_ = false;
 }
 

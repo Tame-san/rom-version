@@ -19,6 +19,8 @@
 
 namespace arcade {
 
+constexpr size_t MAX_SAFE_STATE_SIZE = 64 * 1024 * 1024; // 64 MB upper bound for savestates
+
 std::atomic<CoreHost*> CoreHost::s_instance{nullptr};
 
 bool CoreHost::is_safe_rom_path(const std::string& path) {
@@ -509,13 +511,13 @@ bool CoreHost::load_game(const std::string& rom_path) {
     // Initialize RunAhead Savestate Buffer
     if (fn_serialize_size_) {
         state_size_ = fn_serialize_size_();
-        if (state_size_ > 0) {
+        if (state_size_ > 0 && state_size_ <= MAX_SAFE_STATE_SIZE) {
             canonical_state_.resize(state_size_);
             runahead_active_ = true;
             LOGI("RunAhead frame rollback enabled: State size = %zu bytes", state_size_);
         } else {
             runahead_active_ = false;
-            LOGI("Core does not support serialization, RunAhead disabled");
+            LOGI("Core does not support serialization or size exceeds safe limit, RunAhead disabled");
         }
     }
 
@@ -548,7 +550,7 @@ void CoreHost::step_frame() {
     if (runahead_active_ && run_ahead_frames_ > 0 && fn_serialize_ && fn_unserialize_ && fn_serialize_size_) {
         // SEC-04: Dynamically query serialize size to prevent buffer overrun if core resized state
         size_t cur_sz = fn_serialize_size_();
-        if (cur_sz == 0) {
+        if (cur_sz == 0 || cur_sz > MAX_SAFE_STATE_SIZE) {
             suppress_video_ = false;
             mute_audio_ = false;
             fn_run_();
@@ -597,7 +599,7 @@ void CoreHost::step_frame() {
 bool CoreHost::save_state(std::vector<uint8_t>& out_state) {
     if (!game_loaded_ || !fn_serialize_size_ || !fn_serialize_) return false;
     size_t sz = fn_serialize_size_();
-    if (sz == 0) return false;
+    if (sz == 0 || sz > MAX_SAFE_STATE_SIZE) return false;
     out_state.resize(sz);
     return fn_serialize_(out_state.data(), sz);
 }
@@ -605,7 +607,7 @@ bool CoreHost::save_state(std::vector<uint8_t>& out_state) {
 bool CoreHost::load_state(const std::vector<uint8_t>& in_state) {
     if (!game_loaded_ || !fn_unserialize_ || !fn_serialize_size_ || in_state.empty()) return false;
     size_t expected_sz = fn_serialize_size_();
-    if (expected_sz == 0 || in_state.size() < expected_sz) {
+    if (expected_sz == 0 || expected_sz > MAX_SAFE_STATE_SIZE || in_state.size() < expected_sz) {
         LOGE("load_state failed: provided buffer size (%zu) smaller than expected (%zu)",
              in_state.size(), expected_sz);
         return false;

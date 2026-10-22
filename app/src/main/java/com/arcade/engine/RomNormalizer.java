@@ -122,7 +122,9 @@ public class RomNormalizer {
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 String name = entry.getName();
-                if (entry.isDirectory() || name.contains("/") || name.contains("\\")) {
+                // SEC-FIND-08: Reject path traversal sequences and subdirectories
+                if (entry.isDirectory() || name.contains("/") || name.contains("\\") ||
+                    name.equals("..") || name.equals(".") || name.contains("..")) {
                     continue;
                 }
                 names.add(name);
@@ -175,8 +177,9 @@ public class RomNormalizer {
                     ZipEntry entry = entries.nextElement();
                     String name = entry.getName();
 
-                    // Arcade drivers only look for root files; skip subdirectories and non-root entries
-                    if (entry.isDirectory() || name.contains("/") || name.contains("\\")) {
+                    // Arcade drivers only look for root files; skip subdirectories and traversal entries (SEC-FIND-08)
+                    if (entry.isDirectory() || name.contains("/") || name.contains("\\") ||
+                        name.equals("..") || name.equals(".") || name.contains("..")) {
                         continue;
                     }
 

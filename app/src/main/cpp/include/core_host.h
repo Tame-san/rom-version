@@ -41,9 +41,17 @@ public:
     void set_audio_engine(AudioEngine* audio_engine) { audio_engine_ = audio_engine; }
     void set_renderer(Renderer* renderer) { renderer_ = renderer; }
 
-    // Configuration
-    void set_system_directory(const std::string& dir) { system_dir_ = dir; }
-    void set_save_directory(const std::string& dir) { save_dir_ = dir; }
+    // Configuration (SEC-FIND-07: Guard against path traversal)
+    void set_system_directory(const std::string& dir) {
+        if (!dir.empty() && dir.find("..") == std::string::npos) {
+            system_dir_ = dir;
+        }
+    }
+    void set_save_directory(const std::string& dir) {
+        if (!dir.empty() && dir.find("..") == std::string::npos) {
+            save_dir_ = dir;
+        }
+    }
     void set_run_ahead_frames(int frames) { run_ahead_frames_ = frames; }
     const std::string& get_system_directory() const { return system_dir_; }
     const std::string& get_save_directory() const { return save_dir_; }

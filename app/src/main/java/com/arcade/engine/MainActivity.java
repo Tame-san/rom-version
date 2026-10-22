@@ -449,15 +449,22 @@ public class MainActivity extends Activity {
 
     private String getFileNameFromUri(Uri uri) {
         DocumentFile doc = DocumentFile.fromSingleUri(this, uri);
+        String rawName = "game.zip";
         if (doc != null && doc.getName() != null) {
-            return doc.getName();
+            rawName = doc.getName();
+        } else {
+            String path = uri.getPath();
+            if (path != null) {
+                int idx = path.lastIndexOf('/');
+                if (idx != -1) rawName = path.substring(idx + 1);
+            }
         }
-        String path = uri.getPath();
-        if (path != null) {
-            int idx = path.lastIndexOf('/');
-            if (idx != -1) return path.substring(idx + 1);
+        // SEC-FIND-02: Sanitize filename to prevent directory traversal and arbitrary file overwrite
+        String cleanName = new File(rawName).getName().replace('/', '_').replace('\\', '_');
+        if (cleanName.equals("..") || cleanName.equals(".") || cleanName.contains("..") || cleanName.trim().isEmpty()) {
+            cleanName = "safe_" + System.currentTimeMillis() + ".zip";
         }
-        return "game.zip";
+        return cleanName;
     }
 
     private void handleSelectedFileUri(Uri uri) {
@@ -467,6 +474,9 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             try {
                 File target = new File(getRomsDir(), fileName);
+                if (!target.getCanonicalPath().startsWith(getRomsDir().getCanonicalPath())) {
+                    throw new SecurityException("Path traversal attempt in URI filename: " + fileName);
+                }
                 copyUriToFile(uri, target);
 
                 // If user selected neogeo.zip, update BIOS status & synchronize
