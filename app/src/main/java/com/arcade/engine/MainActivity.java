@@ -59,6 +59,10 @@ public class MainActivity extends Activity {
     private EditText etSearch;
     private ListView lvGames;
 
+    private android.app.AlertDialog activeProgressDialog;
+    private OfflineDownloadManager.BatchQueue activeBatchQueue;
+    private AtomicBoolean activeSingleCancelSignal;
+
     private final List<GameItem> masterList = new ArrayList<>();
     private final List<GameItem> displayList = new ArrayList<>();
     private GameAdapter gameAdapter;
@@ -133,8 +137,8 @@ public class MainActivity extends Activity {
                 }
             }
 
-            // Dual-Action button states: Download / Offline & Play
-            boolean downloaded = item.isDownloaded(getRomsDir());
+            // Dual-Action button states: Download / Offline & Play (SEC-07: In-memory check without disk I/O)
+            boolean downloaded = item.isDownloadedQuick();
             if (downloaded) {
                 holder.playBtn.setText("PLAY ▶");
                 holder.playBtn.setBackgroundResource(R.drawable.bg_play_cue);
@@ -154,7 +158,7 @@ public class MainActivity extends Activity {
             }
 
             holder.downloadBtn.setOnClickListener(v -> {
-                if (!item.isDownloaded(getRomsDir())) {
+                if (!item.isDownloadedQuick()) {
                     startRomDownload(item, false);
                 } else {
                     Toast.makeText(MainActivity.this, (item.name != null ? item.name : item.fileName) + " is already saved offline", Toast.LENGTH_SHORT).show();
@@ -162,7 +166,7 @@ public class MainActivity extends Activity {
             });
 
             View.OnClickListener playClickListener = v -> {
-                if (!item.isDownloaded(getRomsDir())) {
+                if (!item.isDownloadedQuick()) {
                     startRomDownload(item, true);
                 } else {
                     launchGameItem(item);
@@ -376,6 +380,31 @@ public class MainActivity extends Activity {
         updateBiosStatus();
         scanInternalRoms();
         scanCommonPhonePaths();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (activeBatchQueue != null) {
+            activeBatchQueue.cancel();
+            activeBatchQueue = null;
+        }
+        if (activeSingleCancelSignal != null) {
+            activeSingleCancelSignal.set(true);
+            activeSingleCancelSignal = null;
+        }
+        if (activeProgressDialog != null) {
+            safeDismissDialog(activeProgressDialog);
+            activeProgressDialog = null;
+        }
+    }
+
+    private void safeDismissDialog(android.app.Dialog dialog) {
+        if (dialog != null && dialog.isShowing() && !isFinishing() && !isDestroyed()) {
+            try {
+                dialog.dismiss();
+            } catch (Exception ignored) {}
+        }
     }
 
     private File getRomsDir() {
@@ -1152,9 +1181,14 @@ public class MainActivity extends Activity {
                 .create();
 
         OfflineDownloadManager.BatchQueue queue = new OfflineDownloadManager.BatchQueue(toDownload);
+        activeBatchQueue = queue;
+        activeProgressDialog = dialog;
+
         btnCancel.setOnClickListener(v -> {
             queue.cancel();
-            dialog.dismiss();
+            safeDismissDialog(dialog);
+            if (activeProgressDialog == dialog) activeProgressDialog = null;
+            if (activeBatchQueue == queue) activeBatchQueue = null;
             Toast.makeText(MainActivity.this, "Cancelling batch download...", Toast.LENGTH_SHORT).show();
         });
 
@@ -1229,7 +1263,9 @@ public class MainActivity extends Activity {
                 @Override
                 public void onQueueFinished(int completedCount, int totalCount, boolean cancelled) {
                     runOnUiThread(() -> {
-                        if (dialog.isShowing()) dialog.dismiss();
+                        safeDismissDialog(dialog);
+                        if (activeProgressDialog == dialog) activeProgressDialog = null;
+                        if (activeBatchQueue == queue) activeBatchQueue = null;
                         ensureBiosSynchronized();
                         updateBiosStatus();
                         applyFilter(currentSearchQuery);
@@ -1277,9 +1313,14 @@ public class MainActivity extends Activity {
                 .create();
 
         AtomicBoolean cancelSignal = new AtomicBoolean(false);
+        activeSingleCancelSignal = cancelSignal;
+        activeProgressDialog = dialog;
+
         btnCancel.setOnClickListener(v -> {
             cancelSignal.set(true);
-            dialog.dismiss();
+            safeDismissDialog(dialog);
+            if (activeProgressDialog == dialog) activeProgressDialog = null;
+            if (activeSingleCancelSignal == cancelSignal) activeSingleCancelSignal = null;
             Toast.makeText(MainActivity.this, "Download cancelled", Toast.LENGTH_SHORT).show();
         });
 
@@ -1318,7 +1359,9 @@ public class MainActivity extends Activity {
                             @Override
                             public void onComplete(File file) {
                                 runOnUiThread(() -> {
-                                    if (dialog.isShowing()) dialog.dismiss();
+                                    safeDismissDialog(dialog);
+                                    if (activeProgressDialog == dialog) activeProgressDialog = null;
+                                    if (activeSingleCancelSignal == cancelSignal) activeSingleCancelSignal = null;
                                     item.localPath = file.getAbsolutePath();
                                     gameAdapter.notifyDataSetChanged();
                                     updateFilterCounts();
@@ -1342,7 +1385,9 @@ public class MainActivity extends Activity {
                             @Override
                             public void onError(Exception error) {
                                 runOnUiThread(() -> {
-                                    if (dialog.isShowing()) dialog.dismiss();
+                                    safeDismissDialog(dialog);
+                                    if (activeProgressDialog == dialog) activeProgressDialog = null;
+                                    if (activeSingleCancelSignal == cancelSignal) activeSingleCancelSignal = null;
                                     if (!(error instanceof CancellationException)) {
                                         Toast.makeText(MainActivity.this, "Download failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
                                     }
@@ -1352,7 +1397,9 @@ public class MainActivity extends Activity {
                 );
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    if (dialog.isShowing()) dialog.dismiss();
+                    safeDismissDialog(dialog);
+                    if (activeProgressDialog == dialog) activeProgressDialog = null;
+                    if (activeSingleCancelSignal == cancelSignal) activeSingleCancelSignal = null;
                     if (!(e instanceof CancellationException)) {
                         Toast.makeText(MainActivity.this, "Download error: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     }

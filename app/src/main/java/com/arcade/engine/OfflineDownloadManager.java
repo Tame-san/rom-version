@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages offline storage, cache lifecycle, filtering, and batch downloading
@@ -102,33 +104,49 @@ public class OfflineDownloadManager {
 
     /**
      * Safely deletes local cached copy of a ROM file and resets item local path.
+     * Prevents arbitrary file deletion and path traversal by strictly verifying
+     * that deleted files are files located inside romsDir.
      * Returns the total number of bytes reclaimed.
      */
     public static long deleteLocalCopy(GameItem item, File romsDir) {
-        if (item == null) return 0L;
+        if (item == null || romsDir == null) return 0L;
         long bytesReclaimed = 0L;
 
-        if (item.localPath != null) {
-            File localFile = new File(item.localPath);
-            if (localFile.exists()) {
-                bytesReclaimed += localFile.length();
-                try {
-                    localFile.delete();
-                } catch (Exception ignored) {}
+        try {
+            String canonicalRomsDir = romsDir.getCanonicalPath();
+            if (!canonicalRomsDir.endsWith(File.separator)) {
+                canonicalRomsDir += File.separator;
             }
-            item.localPath = null;
-        }
 
-        if (romsDir != null && item.fileName != null) {
-            File dirFile = new File(romsDir, item.fileName);
-            if (dirFile.exists()) {
-                if (bytesReclaimed == 0) {
-                    bytesReclaimed += dirFile.length();
+            // 1. Check item.localPath (must be a regular file strictly inside romsDir)
+            if (item.localPath != null && !item.localPath.trim().isEmpty()) {
+                File localFile = new File(item.localPath);
+                if (localFile.isFile()) {
+                    String canonicalLocal = localFile.getCanonicalPath();
+                    if (canonicalLocal.startsWith(canonicalRomsDir)) {
+                        bytesReclaimed += localFile.length();
+                        localFile.delete();
+                    }
                 }
-                try {
-                    dirFile.delete();
-                } catch (Exception ignored) {}
+                item.localPath = null;
             }
+
+            // 2. Check sanitized fileName inside romsDir
+            if (item.fileName != null && !item.fileName.trim().isEmpty()) {
+                String safeFileName = NetworkRomSource.sanitizeFileName(item.fileName);
+                File dirFile = new File(romsDir, safeFileName);
+                if (dirFile.isFile()) {
+                    String canonicalDirFile = dirFile.getCanonicalPath();
+                    if (canonicalDirFile.startsWith(canonicalRomsDir)) {
+                        if (bytesReclaimed == 0) {
+                            bytesReclaimed += dirFile.length();
+                        }
+                        dirFile.delete();
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Abort safely on path canonicalization error
         }
 
         return bytesReclaimed;
@@ -191,9 +209,9 @@ public class OfflineDownloadManager {
         private final List<GameItem> items;
         private final AtomicBoolean cancelSignal;
         private final ItemDownloader downloader;
-        private int completedCount = 0;
-        private int failedCount = 0;
-        private int currentIndex = 0;
+        private final AtomicInteger completedCount = new AtomicInteger(0);
+        private final AtomicInteger failedCount = new AtomicInteger(0);
+        private final AtomicInteger currentIndex = new AtomicInteger(0);
 
         public BatchQueue(List<GameItem> items) {
             this(items, DEFAULT_DOWNLOADER);
@@ -218,15 +236,15 @@ public class OfflineDownloadManager {
         }
 
         public int getCompletedCount() {
-            return completedCount;
+            return completedCount.get();
         }
 
         public int getFailedCount() {
-            return failedCount;
+            return failedCount.get();
         }
 
         public int getCurrentIndex() {
-            return currentIndex;
+            return currentIndex.get();
         }
 
         public AtomicBoolean getCancelSignal() {
@@ -243,61 +261,75 @@ public class OfflineDownloadManager {
                 listener.onQueueStart(items.size(), totalBytes);
             }
 
-            for (int i = 0; i < items.size(); i++) {
-                if (cancelSignal.get()) {
-                    break;
-                }
-                currentIndex = i;
-                GameItem currentItem = items.get(i);
-                if (listener != null) {
-                    listener.onItemStart(i, items.size(), currentItem);
-                }
-
-                try {
-                    downloader.download(
-                            currentItem.remoteUrl,
-                            romsDir,
-                            currentItem.fileName,
-                            cancelSignal,
-                            new NetworkRomSource.DownloadProgressListener() {
-                                @Override
-                                public void onProgress(long bytesRead, long total, double speed) {
-                                    if (listener != null) {
-                                        listener.onItemProgress(currentIndex, items.size(), currentItem, bytesRead, total, speed);
-                                    }
-                                }
-
-                                @Override
-                                public void onComplete(File file) {
-                                    currentItem.localPath = file.getAbsolutePath();
-                                    completedCount++;
-                                    if (listener != null) {
-                                        listener.onItemComplete(currentIndex, items.size(), currentItem, file);
-                                    }
-                                }
-
-                                @Override
-                                public void onError(Exception error) {
-                                    failedCount++;
-                                    if (listener != null) {
-                                        listener.onItemError(currentIndex, items.size(), currentItem, error);
-                                    }
-                                }
-                            }
-                    );
-                } catch (Exception e) {
+            try {
+                for (int i = 0; i < items.size(); i++) {
                     if (cancelSignal.get()) {
                         break;
                     }
-                    failedCount++;
+                    currentIndex.set(i);
+                    GameItem currentItem = items.get(i);
+                    final int itemIndex = i;
                     if (listener != null) {
-                        listener.onItemError(i, items.size(), currentItem, e);
+                        listener.onItemStart(i, items.size(), currentItem);
+                    }
+
+                    AtomicBoolean itemProcessed = new AtomicBoolean(false);
+
+                    try {
+                        downloader.download(
+                                currentItem.remoteUrl,
+                                romsDir,
+                                currentItem.fileName,
+                                cancelSignal,
+                                new NetworkRomSource.DownloadProgressListener() {
+                                    @Override
+                                    public void onProgress(long bytesRead, long total, double speed) {
+                                        if (listener != null) {
+                                            listener.onItemProgress(itemIndex, items.size(), currentItem, bytesRead, total, speed);
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onComplete(File file) {
+                                        if (itemProcessed.compareAndSet(false, true)) {
+                                            currentItem.localPath = file.getAbsolutePath();
+                                            completedCount.incrementAndGet();
+                                            if (listener != null) {
+                                                listener.onItemComplete(itemIndex, items.size(), currentItem, file);
+                                            }
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onError(Exception error) {
+                                        if (cancelSignal.get() || error instanceof CancellationException) {
+                                            return;
+                                        }
+                                        if (itemProcessed.compareAndSet(false, true)) {
+                                            failedCount.incrementAndGet();
+                                            if (listener != null) {
+                                                listener.onItemError(itemIndex, items.size(), currentItem, error);
+                                            }
+                                        }
+                                    }
+                                }
+                        );
+                    } catch (Exception e) {
+                        if (cancelSignal.get() || e instanceof CancellationException) {
+                            break;
+                        }
+                        if (itemProcessed.compareAndSet(false, true)) {
+                            failedCount.incrementAndGet();
+                            if (listener != null) {
+                                listener.onItemError(itemIndex, items.size(), currentItem, e);
+                            }
+                        }
                     }
                 }
-            }
-
-            if (listener != null) {
-                listener.onQueueFinished(completedCount, items.size(), cancelSignal.get());
+            } finally {
+                if (listener != null) {
+                    listener.onQueueFinished(completedCount.get(), items.size(), cancelSignal.get());
+                }
             }
         }
     }

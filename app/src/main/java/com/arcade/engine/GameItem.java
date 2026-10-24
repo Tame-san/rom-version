@@ -35,17 +35,27 @@ public class GameItem {
     }
 
     /**
+     * In-memory check without disk I/O, ideal for UI ListView scrolling.
+     */
+    public boolean isDownloadedQuick() {
+        return (localPath != null && !localPath.trim().isEmpty()) || uri != null;
+    }
+
+    /**
      * Checks if a valid local copy of this game exists on disk or as a content URI.
      */
     public boolean isDownloaded(File romsDir) {
-        if (localPath != null) {
+        if (localPath != null && !localPath.trim().isEmpty()) {
             File f = new File(localPath);
             if (f.exists() && f.length() > 0) return true;
         }
         if (uri != null) return true;
-        if (romsDir != null && fileName != null) {
+        if (romsDir != null && fileName != null && !fileName.trim().isEmpty()) {
             File f = new File(romsDir, fileName);
-            return f.exists() && f.length() > 0;
+            if (f.exists() && f.length() > 0) {
+                localPath = f.getAbsolutePath();
+                return true;
+            }
         }
         return false;
     }

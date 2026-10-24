@@ -414,6 +414,133 @@ public class OfflineDownloadManagerTest {
         Assert.assertEquals(1, queue.getFailedCount());
     }
 
+    @Test
+    public void testDeleteLocalCopy_PreventsPathTraversal_OutsideRomsDir() throws IOException {
+        File romsDir = tempFolder.newFolder("roms");
+        File outsideDir = tempFolder.newFolder("outside");
+        File sensitiveFile = new File(outsideDir, "sensitive.txt");
+        createDummyFile(sensitiveFile, 1234);
+        Assert.assertTrue(sensitiveFile.exists());
+
+        // Attempt 1: localPath points outside romsDir
+        GameItem maliciousItem1 = new GameItem("Malicious 1", "innocent.zip", null,
+                sensitiveFile.getAbsolutePath(), "ARCADE", "http://s/1.zip", true, 1234);
+        long reclaimed1 = OfflineDownloadManager.deleteLocalCopy(maliciousItem1, romsDir);
+
+        Assert.assertEquals(0L, reclaimed1);
+        Assert.assertTrue("Sensitive file outside romsDir must NOT be deleted", sensitiveFile.exists());
+        Assert.assertNull(maliciousItem1.localPath);
+
+        // Attempt 2: fileName has directory traversal characters
+        GameItem maliciousItem2 = new GameItem("Malicious 2", "../../outside/sensitive.txt", null,
+                null, "ARCADE", "http://s/2.zip", true, 1234);
+        long reclaimed2 = OfflineDownloadManager.deleteLocalCopy(maliciousItem2, romsDir);
+
+        Assert.assertEquals(0L, reclaimed2);
+        Assert.assertTrue("Sensitive file outside romsDir must NOT be deleted via fileName traversal", sensitiveFile.exists());
+    }
+
+    @Test
+    public void testDeleteLocalCopy_NullRomsDir() {
+        GameItem item = new GameItem("Game", "game.zip", null, "/tmp/some_game.zip", "ARCADE", "http://s/g.zip", true, 500);
+        long reclaimed = OfflineDownloadManager.deleteLocalCopy(item, null);
+        Assert.assertEquals(0L, reclaimed);
+    }
+
+    @Test
+    public void testBatchQueue_ErrorCounterNoDoubleCount() throws IOException {
+        File romsDir = tempFolder.newFolder("roms");
+        List<GameItem> queueItems = new ArrayList<>();
+        queueItems.add(new GameItem("Error Game", "err.zip", null, null, "ARCADE", "http://s/err.zip", true, 1000));
+
+        // Downloader both invokes listener.onError AND throws Exception
+        OfflineDownloadManager.ItemDownloader doubleErrorDownloader = (url, targetDir, fileName, cancelSignal, listener) -> {
+            IOException ioEx = new IOException("Connection failed");
+            if (listener != null) {
+                listener.onError(ioEx);
+            }
+            throw ioEx;
+        };
+
+        OfflineDownloadManager.BatchQueue queue = new OfflineDownloadManager.BatchQueue(queueItems, doubleErrorDownloader);
+        AtomicInteger onErrorCalls = new AtomicInteger(0);
+
+        queue.run(romsDir, new OfflineDownloadManager.BatchDownloadListener() {
+            @Override
+            public void onQueueStart(int totalCount, long totalBytes) {}
+
+            @Override
+            public void onItemStart(int index, int totalCount, GameItem item) {}
+
+            @Override
+            public void onItemProgress(int index, int totalCount, GameItem item, long bytesRead, long totalBytes, double speedBytesPerSec) {}
+
+            @Override
+            public void onItemComplete(int index, int totalCount, GameItem item, File file) {}
+
+            @Override
+            public void onItemError(int index, int totalCount, GameItem item, Exception error) {
+                onErrorCalls.incrementAndGet();
+            }
+
+            @Override
+            public void onQueueFinished(int completedCount, int totalCount, boolean cancelled) {
+                Assert.assertEquals(0, completedCount);
+                Assert.assertFalse(cancelled);
+            }
+        });
+
+        // Must be exactly 1 error call and 1 failed count, not 2
+        Assert.assertEquals(1, onErrorCalls.get());
+        Assert.assertEquals(1, queue.getFailedCount());
+        Assert.assertEquals(0, queue.getCompletedCount());
+    }
+
+    @Test
+    public void testBatchQueue_CancelDoesNotIncrementFailedCount() throws IOException {
+        File romsDir = tempFolder.newFolder("roms");
+        List<GameItem> queueItems = new ArrayList<>();
+        queueItems.add(new GameItem("Game 1", "game1.zip", null, null, "ARCADE", "http://s/1.zip", true, 1000));
+        queueItems.add(new GameItem("Game 2", "game2.zip", null, null, "ARCADE", "http://s/2.zip", true, 2000));
+
+        // Downloader triggers cancellation and throws CancellationException
+        OfflineDownloadManager.ItemDownloader cancelDownloader = (url, targetDir, fileName, cancelSignal, listener) -> {
+            cancelSignal.set(true);
+            throw new java.util.concurrent.CancellationException("User cancelled");
+        };
+
+        OfflineDownloadManager.BatchQueue queue = new OfflineDownloadManager.BatchQueue(queueItems, cancelDownloader);
+        AtomicInteger onErrorCalls = new AtomicInteger(0);
+
+        queue.run(romsDir, new OfflineDownloadManager.BatchDownloadListener() {
+            @Override
+            public void onQueueStart(int totalCount, long totalBytes) {}
+
+            @Override
+            public void onItemStart(int index, int totalCount, GameItem item) {}
+
+            @Override
+            public void onItemProgress(int index, int totalCount, GameItem item, long bytesRead, long totalBytes, double speedBytesPerSec) {}
+
+            @Override
+            public void onItemComplete(int index, int totalCount, GameItem item, File file) {}
+
+            @Override
+            public void onItemError(int index, int totalCount, GameItem item, Exception error) {
+                onErrorCalls.incrementAndGet();
+            }
+
+            @Override
+            public void onQueueFinished(int completedCount, int totalCount, boolean cancelled) {
+                Assert.assertTrue(cancelled);
+            }
+        });
+
+        Assert.assertEquals(0, onErrorCalls.get());
+        Assert.assertEquals(0, queue.getFailedCount());
+        Assert.assertTrue(queue.isCancelled());
+    }
+
     private static void createDummyFile(File file, int size) throws IOException {
         if (!file.getParentFile().exists()) {
             file.getParentFile().mkdirs();
