@@ -220,3 +220,36 @@ An exhaustive security audit was executed against CWE/SANS Top 25 and OWASP Mobi
 | **SEC-FIND-07** | Directory Traversal in Native Directory Setters (CWE-22) | Rejected `..` sequences in `set_system_directory` and `set_save_directory` in [`core_host.h`](file:///home/the-dev/repos/rom-version/app/src/main/cpp/include/core_host.h#L45-L54). |
 | **SEC-FIND-08** | Zip Slip Edge Cases with `.` and `..` (CWE-22) | Explicitly filtered `..` and `.` entries in `needsNormalization` and `normalizeZipEntries` in [`RomNormalizer.java`](file:///home/the-dev/repos/rom-version/app/src/main/java/com/arcade/engine/RomNormalizer.java#L125-L182). |
 
+---
+
+## 7. Network ROM Source Implementation (Completed)
+
+> **Feature**: Network Address as ROM Source (Dedicated HTTPS / Local IPv4 Server)  
+> **Date**: 2026-10-24  
+> **Status**: Verified Operational (20 Unit Tests Passing, Debug APK Clean, Native Engine Clean)
+
+### Architecture & Components
+1. **Network Engine (`NetworkRomSource.java`)**:
+   - **URL Normalization**: Supports dedicated HTTPS endpoints (`https://...`), full HTTP endpoints (`http://...`), and bare IPv4 hostnames (`192.168.1.100:8000` -> normalized to `http://192.168.1.100:8000/`).
+   - **Catalog Ingestion**:
+     - HTML Directory Indexing (Apache, Nginx, Python `http.server`, Caddy, Lighttpd) using linear regex matching without backtracking ReDoS.
+     - JSON Catalog Indexing (string arrays, object arrays with metadata, object manifests with `files` or `roms` arrays).
+     - Direct ZIP URL support for immediate single-ROM downloading and launching.
+   - **Streaming Downloader**:
+     - Byte tracking with speed calculation, percentage, and cancellation support via `AtomicBoolean`.
+     - Atomic write via `.tmp` file move and automatic resource cleanup on failure.
+     - Strict sandbox enforcement (`canonicalTarget.startsWith(canonicalDest)`).
+   - **Security Hardening**:
+     - Cleartext allowed for local IPv4 servers via [`network_security_config.xml`](file:///home/the-dev/repos/rom-version/app/src/main/res/xml/network_security_config.xml).
+     - User CAs strictly restricted to `<debug-overrides>` to prevent release MITM.
+     - HTTPS-to-HTTP redirect downgrade protection.
+     - 5 MB stream ingestion upper bound preventing catalog memory exhaustion.
+
+2. **Launcher UI Integration (`MainActivity.java`, `activity_main.xml`)**:
+   - `NETWORK` action bar button alongside `SELECT ROM` and `SELECT FOLDER`.
+   - Active network status card displaying connected server, game count, sync, and disconnect controls.
+   - Distinct network platform badge (`bg_badge_net.xml`) in game browser.
+   - Dual item cue state: `PLAY ▶` for cached/local ROMs, `GET ⬇` for remote-only titles.
+   - Download progress dialog (`dialog_download_progress.xml`) with progress bar, transfer rate, and cancel action.
+   - Automatic post-download flow: BIOS synchronization for `neogeo.zip` or transparent normalization and immediate launch for game ROMs.
+
