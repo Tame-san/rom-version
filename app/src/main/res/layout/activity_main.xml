@@ -61,7 +61,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginBottom="16dp">
+        android:layout_marginBottom="12dp">
 
         <Button
             android:id="@+id/btn_select_rom"
@@ -71,10 +71,10 @@
             android:text="SELECT ROM"
             android:background="@drawable/bg_btn_secondary"
             android:textColor="@color/text_primary"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold"
-            android:layout_marginEnd="8dp"
-            android:layout_marginRight="8dp"
+            android:layout_marginEnd="6dp"
+            android:layout_marginRight="6dp"
             android:elevation="2dp" />
 
         <Button
@@ -85,9 +85,73 @@
             android:text="SELECT FOLDER"
             android:background="@drawable/bg_btn_secondary"
             android:textColor="@color/text_primary"
-            android:textSize="13sp"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="6dp"
+            android:layout_marginRight="6dp"
+            android:elevation="2dp" />
+
+        <Button
+            android:id="@+id/btn_network_source"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:text="NETWORK"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:elevation="2dp" />
+    </LinearLayout>
+
+    <!-- Network Source Status Card -->
+    <LinearLayout
+        android:id="@+id/card_network_source"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@drawable/bg_card"
+        android:padding="10dp"
+        android:elevation="2dp"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tv_network_status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🌐 No server connected"
+            android:textColor="@color/badge_net_text"
+            android:textSize="12sp"
+            android:ellipsize="middle"
+            android:singleLine="true" />
+
+        <Button
+            android:id="@+id/btn_network_sync"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="SYNC"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="10dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginLeft="6dp" />
+
+        <Button
+            android:id="@+id/btn_network_disconnect"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="DISCONNECT"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:paddingHorizontal="10dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginLeft="6dp" />
     </LinearLayout>
 
     <!-- Section Header -->

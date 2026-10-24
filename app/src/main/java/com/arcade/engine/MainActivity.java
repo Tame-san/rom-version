@@ -15,6 +15,7 @@ import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,17 +28,29 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity {
 
     private static final int REQ_SELECT_ROM = 1001;
     private static final int REQ_SELECT_FOLDER = 1002;
 
+    private static final String PREF_NAME = "arcade_engine_prefs";
+    private static final String KEY_ACTIVE_SERVER = "network_server_url";
+    private static final String KEY_RECENT_SERVERS = "recent_server_urls";
+
     private TextView tvBiosStatus;
     private TextView tvRomStatus;
     private Button btnSelectRom;
     private Button btnSelectFolder;
+    private Button btnNetworkSource;
+    private View cardNetworkSource;
+    private TextView tvNetworkStatus;
+    private Button btnNetworkSync;
+    private Button btnNetworkDisconnect;
     private EditText etSearch;
     private ListView lvGames;
 
@@ -52,13 +65,34 @@ public class MainActivity extends Activity {
         Uri uri;
         String localPath;
         String systemTag;
+        String remoteUrl;
+        boolean isNetwork;
+        long sizeBytes;
 
         GameItem(String name, String fileName, Uri uri, String localPath, String systemTag) {
+            this(name, fileName, uri, localPath, systemTag, null, false, -1);
+        }
+
+        GameItem(String name, String fileName, Uri uri, String localPath, String systemTag,
+                 String remoteUrl, boolean isNetwork, long sizeBytes) {
             this.name = name;
             this.fileName = fileName;
             this.uri = uri;
             this.localPath = localPath;
             this.systemTag = systemTag;
+            this.remoteUrl = remoteUrl;
+            this.isNetwork = isNetwork;
+            this.sizeBytes = sizeBytes;
+        }
+
+        boolean isDownloaded(File romsDir) {
+            if (localPath != null && new File(localPath).exists()) return true;
+            if (uri != null) return true;
+            if (romsDir != null && fileName != null) {
+                File f = new File(romsDir, fileName);
+                return f.exists() && f.length() > 0;
+            }
+            return false;
         }
     }
 
@@ -92,6 +126,7 @@ public class MainActivity extends Activity {
                 holder = new ViewHolder();
                 holder.title = convertView.findViewById(R.id.tv_game_title);
                 holder.system = convertView.findViewById(R.id.tv_game_system);
+                holder.netBadge = convertView.findViewById(R.id.tv_game_net_badge);
                 holder.filename = convertView.findViewById(R.id.tv_game_filename);
                 holder.playBtn = convertView.findViewById(R.id.tv_play_btn);
                 convertView.setTag(holder);
@@ -119,7 +154,35 @@ public class MainActivity extends Activity {
                 holder.system.setTextColor(0xFF9CA3AF);
             }
 
-            View.OnClickListener clickListener = v -> launchGameItem(item);
+            // Network badge
+            if (holder.netBadge != null) {
+                if (item.isNetwork) {
+                    holder.netBadge.setVisibility(View.VISIBLE);
+                    holder.netBadge.setText("🌐 LAN");
+                } else {
+                    holder.netBadge.setVisibility(View.GONE);
+                }
+            }
+
+            // Play / Download button state
+            boolean downloaded = item.isDownloaded(getRomsDir());
+            if (downloaded) {
+                holder.playBtn.setText("PLAY ▶");
+                holder.playBtn.setBackgroundResource(R.drawable.bg_play_cue);
+                holder.playBtn.setTextColor(0xFFE8A702);
+            } else {
+                holder.playBtn.setText("GET ⬇");
+                holder.playBtn.setBackgroundResource(R.drawable.bg_download_cue);
+                holder.playBtn.setTextColor(0xFF10B981);
+            }
+
+            View.OnClickListener clickListener = v -> {
+                if (!item.isDownloaded(getRomsDir()) && item.remoteUrl != null) {
+                    startRomDownload(item);
+                } else {
+                    launchGameItem(item);
+                }
+            };
             convertView.setOnClickListener(clickListener);
             holder.playBtn.setOnClickListener(clickListener);
 
@@ -130,6 +193,7 @@ public class MainActivity extends Activity {
     private static class ViewHolder {
         TextView title;
         TextView system;
+        TextView netBadge;
         TextView filename;
         TextView playBtn;
     }
@@ -168,6 +232,11 @@ public class MainActivity extends Activity {
         tvRomStatus = findViewById(R.id.tv_rom_status);
         btnSelectRom = findViewById(R.id.btn_select_rom);
         btnSelectFolder = findViewById(R.id.btn_select_folder);
+        btnNetworkSource = findViewById(R.id.btn_network_source);
+        cardNetworkSource = findViewById(R.id.card_network_source);
+        tvNetworkStatus = findViewById(R.id.tv_network_status);
+        btnNetworkSync = findViewById(R.id.btn_network_sync);
+        btnNetworkDisconnect = findViewById(R.id.btn_network_disconnect);
         etSearch = findViewById(R.id.et_search);
         lvGames = findViewById(R.id.lv_games);
 
@@ -176,6 +245,24 @@ public class MainActivity extends Activity {
 
         btnSelectRom.setOnClickListener(v -> openFilePicker());
         btnSelectFolder.setOnClickListener(v -> openFolderPicker());
+        btnNetworkSource.setOnClickListener(v -> showNetworkSourceDialog());
+        cardNetworkSource.setOnClickListener(v -> showNetworkSourceDialog());
+        btnNetworkSync.setOnClickListener(v -> {
+            String active = getActiveServer();
+            if (!active.isEmpty()) {
+                scanNetworkSource(active, false);
+            } else {
+                showNetworkSourceDialog();
+            }
+        });
+        btnNetworkDisconnect.setOnClickListener(v -> disconnectNetworkSource());
+
+        // Restore active network server if previously saved
+        String savedServer = getActiveServer();
+        if (!savedServer.isEmpty()) {
+            cardNetworkSource.setVisibility(View.VISIBLE);
+            tvNetworkStatus.setText("🌐 " + savedServer);
+        }
 
         etSearch.addTextChangedListener(new TextWatcher() {
             @Override
@@ -747,13 +834,321 @@ public class MainActivity extends Activity {
         return sb.toString();
     }
 
+    private SharedPreferences getPrefs() {
+        return getSharedPreferences(PREF_NAME, MODE_PRIVATE);
+    }
+
+    private String getActiveServer() {
+        return getPrefs().getString(KEY_ACTIVE_SERVER, "");
+    }
+
+    private void setActiveServer(String url) {
+        getPrefs().edit().putString(KEY_ACTIVE_SERVER, url != null ? url : "").apply();
+    }
+
+    private List<String> getRecentServers() {
+        String raw = getPrefs().getString(KEY_RECENT_SERVERS, "");
+        List<String> list = new ArrayList<>();
+        if (!raw.isEmpty()) {
+            String[] parts = raw.split(";;");
+            for (String p : parts) {
+                if (!p.trim().isEmpty() && !list.contains(p.trim())) {
+                    list.add(p.trim());
+                }
+            }
+        }
+        return list;
+    }
+
+    private void addRecentServer(String url) {
+        if (url == null || url.trim().isEmpty()) return;
+        List<String> list = getRecentServers();
+        list.remove(url.trim());
+        list.add(0, url.trim());
+        while (list.size() > 5) {
+            list.remove(list.size() - 1);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) sb.append(";;");
+            sb.append(list.get(i));
+        }
+        getPrefs().edit().putString(KEY_RECENT_SERVERS, sb.toString()).apply();
+    }
+
+    private void showNetworkSourceDialog() {
+        LayoutInflater inflater = LayoutInflater.from(this);
+        View dialogView = inflater.inflate(R.layout.dialog_network_source, null);
+        EditText etUrl = dialogView.findViewById(R.id.et_server_url);
+        TextView tvRecentLabel = dialogView.findViewById(R.id.tv_recent_label);
+        ViewGroup layoutRecent = dialogView.findViewById(R.id.layout_recent_servers);
+        Button btnDisconnect = dialogView.findViewById(R.id.btn_dialog_disconnect);
+        Button btnCancel = dialogView.findViewById(R.id.btn_dialog_cancel);
+        Button btnDirect = dialogView.findViewById(R.id.btn_dialog_direct);
+        Button btnScan = dialogView.findViewById(R.id.btn_dialog_scan);
+
+        String activeServer = getActiveServer();
+        if (!activeServer.isEmpty()) {
+            etUrl.setText(activeServer);
+            btnDisconnect.setVisibility(View.VISIBLE);
+        }
+
+        List<String> recent = getRecentServers();
+        if (!recent.isEmpty()) {
+            tvRecentLabel.setVisibility(View.VISIBLE);
+            layoutRecent.setVisibility(View.VISIBLE);
+            for (String serverUrl : recent) {
+                TextView itemTv = new TextView(this);
+                itemTv.setText("• " + serverUrl);
+                itemTv.setTextColor(0xFF38BDF8);
+                itemTv.setTextSize(12f);
+                itemTv.setPadding(4, 6, 4, 6);
+                itemTv.setOnClickListener(v -> etUrl.setText(serverUrl));
+                layoutRecent.addView(itemTv);
+            }
+        }
+
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setView(dialogView)
+                .create();
+
+        btnCancel.setOnClickListener(v -> dialog.dismiss());
+        btnDisconnect.setOnClickListener(v -> {
+            dialog.dismiss();
+            disconnectNetworkSource();
+        });
+        btnScan.setOnClickListener(v -> {
+            String raw = etUrl.getText() != null ? etUrl.getText().toString().trim() : "";
+            if (raw.isEmpty()) {
+                Toast.makeText(MainActivity.this, "Please enter a server URL", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            dialog.dismiss();
+            scanNetworkSource(raw, false);
+        });
+        btnDirect.setOnClickListener(v -> {
+            String raw = etUrl.getText() != null ? etUrl.getText().toString().trim() : "";
+            if (raw.isEmpty()) {
+                Toast.makeText(MainActivity.this, "Please enter a direct .zip URL", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            dialog.dismiss();
+            scanNetworkSource(raw, true);
+        });
+
+        dialog.show();
+    }
+
+    private void scanNetworkSource(String rawUrl, boolean directZipMode) {
+        Toast.makeText(this, "Connecting to network source...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                String normalized = NetworkRomSource.normalizeUrl(rawUrl);
+                AtomicBoolean cancelSignal = new AtomicBoolean(false);
+                List<NetworkRomSource.NetworkRomItem> netItems =
+                        NetworkRomSource.fetchCatalogSync(normalized, cancelSignal);
+
+                runOnUiThread(() -> {
+                    if (netItems == null || netItems.isEmpty()) {
+                        Toast.makeText(MainActivity.this, "No ROM (.zip) files found on server", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    setActiveServer(normalized);
+                    addRecentServer(normalized);
+                    cardNetworkSource.setVisibility(View.VISIBLE);
+                    tvNetworkStatus.setText("🌐 " + normalized);
+
+                    for (NetworkRomSource.NetworkRomItem netItem : netItems) {
+                        String fileName = netItem.getFileName();
+                        GameItem existing = null;
+                        for (GameItem item : masterList) {
+                            if (item.fileName.equalsIgnoreCase(fileName)) {
+                                existing = item;
+                                break;
+                            }
+                        }
+
+                        if (existing != null) {
+                            existing.isNetwork = true;
+                            existing.remoteUrl = netItem.getUrl();
+                            if (existing.sizeBytes <= 0 && netItem.getSize() > 0) {
+                                existing.sizeBytes = netItem.getSize();
+                            }
+                        } else {
+                            String friendly = formatFriendlyName(fileName);
+                            File localRom = new File(getRomsDir(), fileName);
+                            String localPath = localRom.exists() && localRom.length() > 0 ? localRom.getAbsolutePath() : null;
+                            GameItem newItem = new GameItem(
+                                    friendly,
+                                    fileName,
+                                    null,
+                                    localPath,
+                                    detectSystem(fileName),
+                                    netItem.getUrl(),
+                                    true,
+                                    netItem.getSize()
+                            );
+                            masterList.add(newItem);
+                        }
+                    }
+
+                    applyFilter(etSearch != null && etSearch.getText() != null ? etSearch.getText().toString() : "");
+
+                    if (directZipMode || (netItems.size() == 1 && netItems.get(0).isDirectZip())) {
+                        String zipName = netItems.get(0).getFileName();
+                        for (GameItem gi : masterList) {
+                            if (gi.fileName.equalsIgnoreCase(zipName)) {
+                                if (!gi.isDownloaded(getRomsDir())) {
+                                    startRomDownload(gi);
+                                } else {
+                                    launchGameItem(gi);
+                                }
+                                break;
+                            }
+                        }
+                    } else {
+                        Toast.makeText(MainActivity.this, "Found " + netItems.size() + " ROM(s) from " + normalized, Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Network error: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }).start();
+    }
+
+    private void disconnectNetworkSource() {
+        setActiveServer("");
+        cardNetworkSource.setVisibility(View.GONE);
+        masterList.removeIf(item -> item.isNetwork && !item.isDownloaded(getRomsDir()) && item.uri == null);
+        for (GameItem item : masterList) {
+            if (item.isNetwork) {
+                item.isNetwork = false;
+                item.remoteUrl = null;
+            }
+        }
+        applyFilter(currentSearchQuery);
+        Toast.makeText(this, "Disconnected from network ROM source", Toast.LENGTH_SHORT).show();
+    }
+
+    private void startRomDownload(GameItem item) {
+        if (item.remoteUrl == null) {
+            Toast.makeText(this, "No remote download URL available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        LayoutInflater inflater = LayoutInflater.from(this);
+        View view = inflater.inflate(R.layout.dialog_download_progress, null);
+        TextView tvTitle = view.findViewById(R.id.tv_download_title);
+        TextView tvSubtitle = view.findViewById(R.id.tv_download_subtitle);
+        ProgressBar pbProgress = view.findViewById(R.id.pb_download_progress);
+        TextView tvPercent = view.findViewById(R.id.tv_download_percent);
+        TextView tvDetails = view.findViewById(R.id.tv_download_details);
+        Button btnCancel = view.findViewById(R.id.btn_cancel_download);
+
+        tvTitle.setText(item.name != null ? item.name : item.fileName);
+        tvSubtitle.setText("Downloading " + item.fileName + "...");
+
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setView(view)
+                .setCancelable(false)
+                .create();
+
+        AtomicBoolean cancelSignal = new AtomicBoolean(false);
+        btnCancel.setOnClickListener(v -> {
+            cancelSignal.set(true);
+            dialog.dismiss();
+            Toast.makeText(MainActivity.this, "Download cancelled", Toast.LENGTH_SHORT).show();
+        });
+
+        dialog.show();
+
+        new Thread(() -> {
+            try {
+                NetworkRomSource.downloadRomSync(
+                        item.remoteUrl,
+                        getRomsDir(),
+                        item.fileName,
+                        cancelSignal,
+                        new NetworkRomSource.DownloadProgressListener() {
+                            @Override
+                            public void onProgress(long bytesRead, long totalBytes, double speedBytesPerSec) {
+                                runOnUiThread(() -> {
+                                    if (totalBytes > 0) {
+                                        int pct = (int) Math.min(100, (bytesRead * 100) / totalBytes);
+                                        pbProgress.setIndeterminate(false);
+                                        pbProgress.setProgress(pct);
+                                        tvPercent.setText(pct + "%");
+                                        tvDetails.setText(String.format(Locale.ROOT, "%.1f MB / %.1f MB (%.1f MB/s)",
+                                                bytesRead / (1024.0 * 1024.0),
+                                                totalBytes / (1024.0 * 1024.0),
+                                                speedBytesPerSec / (1024.0 * 1024.0)));
+                                    } else {
+                                        pbProgress.setIndeterminate(true);
+                                        tvPercent.setText("");
+                                        tvDetails.setText(String.format(Locale.ROOT, "%.1f MB (%.1f MB/s)",
+                                                bytesRead / (1024.0 * 1024.0),
+                                                speedBytesPerSec / (1024.0 * 1024.0)));
+                                    }
+                                });
+                            }
+
+                            @Override
+                            public void onComplete(File file) {
+                                runOnUiThread(() -> {
+                                    if (dialog.isShowing()) dialog.dismiss();
+                                    item.localPath = file.getAbsolutePath();
+                                    gameAdapter.notifyDataSetChanged();
+
+                                    // If BIOS file downloaded (neogeo.zip or pgm.zip etc.)
+                                    if (file.getName().equalsIgnoreCase("neogeo.zip")) {
+                                        ensureBiosSynchronized();
+                                        updateBiosStatus();
+                                        Toast.makeText(MainActivity.this, "Neo Geo BIOS installed successfully!", Toast.LENGTH_SHORT).show();
+                                    } else {
+                                        Toast.makeText(MainActivity.this, "Download complete: " + file.getName(), Toast.LENGTH_SHORT).show();
+                                        launchGameItem(item);
+                                    }
+                                });
+                            }
+
+                            @Override
+                            public void onError(Exception error) {
+                                runOnUiThread(() -> {
+                                    if (dialog.isShowing()) dialog.dismiss();
+                                    if (!(error instanceof CancellationException)) {
+                                        Toast.makeText(MainActivity.this, "Download failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                                    }
+                                });
+                            }
+                        }
+                );
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    if (dialog.isShowing()) dialog.dismiss();
+                    if (!(e instanceof CancellationException)) {
+                        Toast.makeText(MainActivity.this, "Download error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        }).start();
+    }
+
     private void launchGameItem(GameItem item) {
+        if (!item.isDownloaded(getRomsDir()) && item.remoteUrl != null) {
+            startRomDownload(item);
+            return;
+        }
+
         Toast.makeText(this, "Preparing " + item.fileName + "...", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
                 File romToLaunch;
                 if (item.localPath != null && new File(item.localPath).exists()) {
                     romToLaunch = RomNormalizer.getNormalizedRomFile(MainActivity.this, new File(item.localPath));
+                } else if (new File(getRomsDir(), item.fileName).exists()) {
+                    File romInDir = new File(getRomsDir(), item.fileName);
+                    romToLaunch = RomNormalizer.getNormalizedRomFile(MainActivity.this, romInDir);
                 } else if (item.uri != null) {
                     File target = new File(getRomsDir(), item.fileName);
                     if (!target.exists() || target.length() == 0) {
