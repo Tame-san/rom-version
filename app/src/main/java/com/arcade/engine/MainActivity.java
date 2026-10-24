@@ -49,8 +49,13 @@ public class MainActivity extends Activity {
     private Button btnNetworkSource;
     private View cardNetworkSource;
     private TextView tvNetworkStatus;
+    private Button btnNetworkSaveAll;
     private Button btnNetworkSync;
     private Button btnNetworkDisconnect;
+    private Button btnFilterAll;
+    private Button btnFilterOffline;
+    private Button btnFilterNetwork;
+    private OfflineDownloadManager.FilterTab currentFilterTab = OfflineDownloadManager.FilterTab.ALL;
     private EditText etSearch;
     private ListView lvGames;
 
@@ -58,43 +63,6 @@ public class MainActivity extends Activity {
     private final List<GameItem> displayList = new ArrayList<>();
     private GameAdapter gameAdapter;
     private String currentSearchQuery = "";
-
-    private static class GameItem {
-        String name;
-        String fileName;
-        Uri uri;
-        String localPath;
-        String systemTag;
-        String remoteUrl;
-        boolean isNetwork;
-        long sizeBytes;
-
-        GameItem(String name, String fileName, Uri uri, String localPath, String systemTag) {
-            this(name, fileName, uri, localPath, systemTag, null, false, -1);
-        }
-
-        GameItem(String name, String fileName, Uri uri, String localPath, String systemTag,
-                 String remoteUrl, boolean isNetwork, long sizeBytes) {
-            this.name = name;
-            this.fileName = fileName;
-            this.uri = uri;
-            this.localPath = localPath;
-            this.systemTag = systemTag;
-            this.remoteUrl = remoteUrl;
-            this.isNetwork = isNetwork;
-            this.sizeBytes = sizeBytes;
-        }
-
-        boolean isDownloaded(File romsDir) {
-            if (localPath != null && new File(localPath).exists()) return true;
-            if (uri != null) return true;
-            if (romsDir != null && fileName != null) {
-                File f = new File(romsDir, fileName);
-                return f.exists() && f.length() > 0;
-            }
-            return false;
-        }
-    }
 
     private class GameAdapter extends BaseAdapter {
         private final LayoutInflater inflater;
@@ -128,6 +96,7 @@ public class MainActivity extends Activity {
                 holder.system = convertView.findViewById(R.id.tv_game_system);
                 holder.netBadge = convertView.findViewById(R.id.tv_game_net_badge);
                 holder.filename = convertView.findViewById(R.id.tv_game_filename);
+                holder.downloadBtn = convertView.findViewById(R.id.tv_download_btn);
                 holder.playBtn = convertView.findViewById(R.id.tv_play_btn);
                 convertView.setTag(holder);
             } else {
@@ -164,27 +133,43 @@ public class MainActivity extends Activity {
                 }
             }
 
-            // Play / Download button state
+            // Dual-Action button states: Download / Offline & Play
             boolean downloaded = item.isDownloaded(getRomsDir());
             if (downloaded) {
                 holder.playBtn.setText("PLAY ▶");
                 holder.playBtn.setBackgroundResource(R.drawable.bg_play_cue);
                 holder.playBtn.setTextColor(0xFFE8A702);
+
+                holder.downloadBtn.setText("✓ SAVED");
+                holder.downloadBtn.setBackgroundResource(R.drawable.bg_saved_cue);
+                holder.downloadBtn.setTextColor(0xFF34D399);
             } else {
-                holder.playBtn.setText("GET ⬇");
-                holder.playBtn.setBackgroundResource(R.drawable.bg_download_cue);
-                holder.playBtn.setTextColor(0xFF10B981);
+                holder.playBtn.setText("PLAY ▶");
+                holder.playBtn.setBackgroundResource(R.drawable.bg_play_cue);
+                holder.playBtn.setTextColor(0xFFE8A702);
+
+                holder.downloadBtn.setText("⬇ SAVE");
+                holder.downloadBtn.setBackgroundResource(R.drawable.bg_download_cue);
+                holder.downloadBtn.setTextColor(0xFF10B981);
             }
 
-            View.OnClickListener clickListener = v -> {
-                if (!item.isDownloaded(getRomsDir()) && item.remoteUrl != null) {
-                    startRomDownload(item);
+            holder.downloadBtn.setOnClickListener(v -> {
+                if (!item.isDownloaded(getRomsDir())) {
+                    startRomDownload(item, false);
+                } else {
+                    Toast.makeText(MainActivity.this, (item.name != null ? item.name : item.fileName) + " is already saved offline", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+            View.OnClickListener playClickListener = v -> {
+                if (!item.isDownloaded(getRomsDir())) {
+                    startRomDownload(item, true);
                 } else {
                     launchGameItem(item);
                 }
             };
-            convertView.setOnClickListener(clickListener);
-            holder.playBtn.setOnClickListener(clickListener);
+            convertView.setOnClickListener(playClickListener);
+            holder.playBtn.setOnClickListener(playClickListener);
 
             return convertView;
         }
@@ -195,31 +180,100 @@ public class MainActivity extends Activity {
         TextView system;
         TextView netBadge;
         TextView filename;
+        TextView downloadBtn;
         TextView playBtn;
     }
 
-    private void applyFilter(String query) {
-        currentSearchQuery = query == null ? "" : query.trim().toLowerCase();
-        displayList.clear();
-        if (currentSearchQuery.isEmpty()) {
-            displayList.addAll(masterList);
+    private void setFilterTab(OfflineDownloadManager.FilterTab tab) {
+        currentFilterTab = tab;
+        updateFilterTabUI();
+        applyFilter(currentSearchQuery);
+    }
+
+    private void updateFilterTabUI() {
+        if (btnFilterAll == null || btnFilterOffline == null || btnFilterNetwork == null) return;
+
+        btnFilterAll.setBackgroundResource(currentFilterTab == OfflineDownloadManager.FilterTab.ALL ?
+                R.drawable.bg_tab_selected : R.drawable.bg_tab_unselected);
+        btnFilterAll.setTextColor(currentFilterTab == OfflineDownloadManager.FilterTab.ALL ?
+                0xFFE8A702 : 0xFF8E9099);
+
+        btnFilterOffline.setBackgroundResource(currentFilterTab == OfflineDownloadManager.FilterTab.OFFLINE ?
+                R.drawable.bg_tab_selected : R.drawable.bg_tab_unselected);
+        btnFilterOffline.setTextColor(currentFilterTab == OfflineDownloadManager.FilterTab.OFFLINE ?
+                0xFFE8A702 : 0xFF8E9099);
+
+        btnFilterNetwork.setBackgroundResource(currentFilterTab == OfflineDownloadManager.FilterTab.NETWORK ?
+                R.drawable.bg_tab_selected : R.drawable.bg_tab_unselected);
+        btnFilterNetwork.setTextColor(currentFilterTab == OfflineDownloadManager.FilterTab.NETWORK ?
+                0xFFE8A702 : 0xFF8E9099);
+    }
+
+    private void updateFilterCounts() {
+        if (btnFilterAll == null || btnFilterOffline == null || btnFilterNetwork == null) return;
+        int allCount = OfflineDownloadManager.countGames(masterList, OfflineDownloadManager.FilterTab.ALL, getRomsDir());
+        int offlineCount = OfflineDownloadManager.countGames(masterList, OfflineDownloadManager.FilterTab.OFFLINE, getRomsDir());
+        int networkCount = OfflineDownloadManager.countGames(masterList, OfflineDownloadManager.FilterTab.NETWORK, getRomsDir());
+
+        btnFilterAll.setText("ALL (" + allCount + ")");
+        btnFilterOffline.setText("OFFLINE (" + offlineCount + ")");
+        btnFilterNetwork.setText("NETWORK (" + networkCount + ")");
+    }
+
+    private void showGameContextMenu(GameItem item) {
+        boolean downloaded = item.isDownloaded(getRomsDir());
+        List<String> options = new ArrayList<>();
+        options.add("Play Game");
+        if (!downloaded) {
+            options.add("Download for Offline Play");
         } else {
-            for (GameItem item : masterList) {
-                boolean matchTitle = item.name != null && item.name.toLowerCase().contains(currentSearchQuery);
-                boolean matchFile = item.fileName != null && item.fileName.toLowerCase().contains(currentSearchQuery);
-                boolean matchSystem = item.systemTag != null && item.systemTag.toLowerCase().contains(currentSearchQuery);
-                if (matchTitle || matchFile || matchSystem) {
-                    displayList.add(item);
-                }
-            }
+            options.add("Delete Local Copy");
         }
+
+        String[] optionsArray = options.toArray(new String[0]);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(item.name != null ? item.name : item.fileName)
+                .setItems(optionsArray, (dialog, which) -> {
+                    String selected = optionsArray[which];
+                    if ("Play Game".equals(selected)) {
+                        if (!item.isDownloaded(getRomsDir())) {
+                            startRomDownload(item, true);
+                        } else {
+                            launchGameItem(item);
+                        }
+                    } else if ("Download for Offline Play".equals(selected)) {
+                        startRomDownload(item, false);
+                    } else if ("Delete Local Copy".equals(selected)) {
+                        long reclaimed = OfflineDownloadManager.deleteLocalCopy(item, getRomsDir());
+                        if (!OfflineDownloadManager.shouldRetainAfterDeletion(item) && item.uri == null) {
+                            masterList.remove(item);
+                        }
+                        applyFilter(currentSearchQuery);
+                        updateFilterCounts();
+                        String spaceStr = OfflineDownloadManager.formatBytes(reclaimed);
+                        Toast.makeText(MainActivity.this, "Deleted local copy (" + spaceStr + " reclaimed)", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void applyFilter(String query) {
+        currentSearchQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        displayList.clear();
+        displayList.addAll(OfflineDownloadManager.filterGames(masterList, currentFilterTab, currentSearchQuery, getRomsDir()));
         gameAdapter.notifyDataSetChanged();
+        updateFilterCounts();
+        updateFilterTabUI();
+
         if (masterList.isEmpty()) {
             tvRomStatus.setText("Ready to load game");
         } else if (!currentSearchQuery.isEmpty()) {
             tvRomStatus.setText("Showing " + displayList.size() + " of " + masterList.size() + " games");
         } else {
-            tvRomStatus.setText("Found " + masterList.size() + " arcade game(s)");
+            String filterLabel = currentFilterTab == OfflineDownloadManager.FilterTab.OFFLINE ? "offline " :
+                    currentFilterTab == OfflineDownloadManager.FilterTab.NETWORK ? "network " : "";
+            tvRomStatus.setText("Found " + displayList.size() + " " + filterLabel + "arcade game(s)");
         }
     }
 
@@ -235,18 +289,29 @@ public class MainActivity extends Activity {
         btnNetworkSource = findViewById(R.id.btn_network_source);
         cardNetworkSource = findViewById(R.id.card_network_source);
         tvNetworkStatus = findViewById(R.id.tv_network_status);
+        btnNetworkSaveAll = findViewById(R.id.btn_network_save_all);
         btnNetworkSync = findViewById(R.id.btn_network_sync);
         btnNetworkDisconnect = findViewById(R.id.btn_network_disconnect);
+        btnFilterAll = findViewById(R.id.btn_filter_all);
+        btnFilterOffline = findViewById(R.id.btn_filter_offline);
+        btnFilterNetwork = findViewById(R.id.btn_filter_network);
         etSearch = findViewById(R.id.et_search);
         lvGames = findViewById(R.id.lv_games);
 
         gameAdapter = new GameAdapter();
         lvGames.setAdapter(gameAdapter);
 
+        btnFilterAll.setOnClickListener(v -> setFilterTab(OfflineDownloadManager.FilterTab.ALL));
+        btnFilterOffline.setOnClickListener(v -> setFilterTab(OfflineDownloadManager.FilterTab.OFFLINE));
+        btnFilterNetwork.setOnClickListener(v -> setFilterTab(OfflineDownloadManager.FilterTab.NETWORK));
+
         btnSelectRom.setOnClickListener(v -> openFilePicker());
         btnSelectFolder.setOnClickListener(v -> openFolderPicker());
         btnNetworkSource.setOnClickListener(v -> showNetworkSourceDialog());
         cardNetworkSource.setOnClickListener(v -> showNetworkSourceDialog());
+        if (btnNetworkSaveAll != null) {
+            btnNetworkSaveAll.setOnClickListener(v -> startBatchDownload());
+        }
         btnNetworkSync.setOnClickListener(v -> {
             String active = getActiveServer();
             if (!active.isEmpty()) {
@@ -257,12 +322,16 @@ public class MainActivity extends Activity {
         });
         btnNetworkDisconnect.setOnClickListener(v -> disconnectNetworkSource());
 
-        // Restore active network server if previously saved
+        // Restore active network server if previously saved; default to OFFLINE if none connected
         String savedServer = getActiveServer();
         if (!savedServer.isEmpty()) {
             cardNetworkSource.setVisibility(View.VISIBLE);
             tvNetworkStatus.setText("🌐 " + savedServer);
+            currentFilterTab = OfflineDownloadManager.FilterTab.ALL;
+        } else {
+            currentFilterTab = OfflineDownloadManager.FilterTab.OFFLINE;
         }
+        updateFilterTabUI();
 
         etSearch.addTextChangedListener(new TextWatcher() {
             @Override
@@ -281,6 +350,14 @@ public class MainActivity extends Activity {
             if (position >= 0 && position < displayList.size()) {
                 launchGameItem(displayList.get(position));
             }
+        });
+
+        lvGames.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < displayList.size()) {
+                showGameContextMenu(displayList.get(position));
+                return true;
+            }
+            return false;
         });
 
         // Extract bundled BIOS files from APK assets (neogeo.zip, pgm.zip, etc.)
@@ -1027,11 +1104,156 @@ public class MainActivity extends Activity {
                 item.remoteUrl = null;
             }
         }
+        currentFilterTab = OfflineDownloadManager.FilterTab.OFFLINE;
         applyFilter(currentSearchQuery);
+        updateFilterCounts();
+        updateFilterTabUI();
         Toast.makeText(this, "Disconnected from network ROM source", Toast.LENGTH_SHORT).show();
     }
 
+    private void startBatchDownload() {
+        List<GameItem> toDownload = OfflineDownloadManager.getUndownloadedNetworkGames(masterList, getRomsDir());
+        if (toDownload.isEmpty()) {
+            Toast.makeText(this, "All network games are already saved offline!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        long totalBytes = OfflineDownloadManager.calculateTotalDownloadBytes(toDownload);
+        String sizeStr = totalBytes > 0 ? " (~" + OfflineDownloadManager.formatBytes(totalBytes) + ")" : "";
+        String prompt = "Download " + toDownload.size() + " arcade games" + sizeStr + " for offline play?";
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Save All for Offline Play")
+                .setMessage(prompt)
+                .setPositiveButton("Download All", (dialog, which) -> executeBatchDownload(toDownload, totalBytes))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void executeBatchDownload(List<GameItem> toDownload, long totalBytes) {
+        LayoutInflater inflater = LayoutInflater.from(this);
+        View view = inflater.inflate(R.layout.dialog_download_progress, null);
+        TextView tvTitle = view.findViewById(R.id.tv_download_title);
+        TextView tvSubtitle = view.findViewById(R.id.tv_download_subtitle);
+        ProgressBar pbProgress = view.findViewById(R.id.pb_download_progress);
+        TextView tvPercent = view.findViewById(R.id.tv_download_percent);
+        TextView tvDetails = view.findViewById(R.id.tv_download_details);
+        Button btnCancel = view.findViewById(R.id.btn_cancel_download);
+
+        tvTitle.setText("SAVING ALL OFFLINE");
+        tvSubtitle.setText("Starting batch download (" + toDownload.size() + " games)...");
+        pbProgress.setProgress(0);
+        tvPercent.setText("0%");
+        tvDetails.setText("Queue: 0/" + toDownload.size() + " completed");
+
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setView(view)
+                .setCancelable(false)
+                .create();
+
+        OfflineDownloadManager.BatchQueue queue = new OfflineDownloadManager.BatchQueue(toDownload);
+        btnCancel.setOnClickListener(v -> {
+            queue.cancel();
+            dialog.dismiss();
+            Toast.makeText(MainActivity.this, "Cancelling batch download...", Toast.LENGTH_SHORT).show();
+        });
+
+        dialog.show();
+
+        new Thread(() -> {
+            queue.run(getRomsDir(), new OfflineDownloadManager.BatchDownloadListener() {
+                @Override
+                public void onQueueStart(int totalCount, long totalSize) {
+                    runOnUiThread(() -> {
+                        tvSubtitle.setText("Queue started: " + totalCount + " games");
+                    });
+                }
+
+                @Override
+                public void onItemStart(int index, int totalCount, GameItem item) {
+                    runOnUiThread(() -> {
+                        tvSubtitle.setText("Game " + (index + 1) + " of " + totalCount + ": " + (item.name != null ? item.name : item.fileName));
+                        pbProgress.setProgress(0);
+                        tvPercent.setText("0%");
+                        tvDetails.setText(String.format(Locale.ROOT, "Item %d/%d (Completed: %d)",
+                                index + 1, totalCount, queue.getCompletedCount()));
+                    });
+                }
+
+                @Override
+                public void onItemProgress(int index, int totalCount, GameItem item, long bytesRead, long itemTotal, double speedBytesPerSec) {
+                    runOnUiThread(() -> {
+                        if (itemTotal > 0) {
+                            int pct = (int) Math.min(100, (bytesRead * 100) / itemTotal);
+                            pbProgress.setIndeterminate(false);
+                            pbProgress.setProgress(pct);
+                            tvPercent.setText(pct + "%");
+                            tvDetails.setText(String.format(Locale.ROOT, "Game %d/%d • %.1f MB / %.1f MB (%.1f MB/s)",
+                                    index + 1, totalCount,
+                                    bytesRead / (1024.0 * 1024.0),
+                                    itemTotal / (1024.0 * 1024.0),
+                                    speedBytesPerSec / (1024.0 * 1024.0)));
+                        } else {
+                            pbProgress.setIndeterminate(true);
+                            tvPercent.setText("");
+                            tvDetails.setText(String.format(Locale.ROOT, "Game %d/%d • %.1f MB (%.1f MB/s)",
+                                    index + 1, totalCount,
+                                    bytesRead / (1024.0 * 1024.0),
+                                    speedBytesPerSec / (1024.0 * 1024.0)));
+                        }
+                    });
+                }
+
+                @Override
+                public void onItemComplete(int index, int totalCount, GameItem item, File file) {
+                    runOnUiThread(() -> {
+                        item.localPath = file.getAbsolutePath();
+                        if (file.getName().equalsIgnoreCase("neogeo.zip")) {
+                            ensureBiosSynchronized();
+                            updateBiosStatus();
+                        }
+                        gameAdapter.notifyDataSetChanged();
+                        updateFilterCounts();
+                    });
+                }
+
+                @Override
+                public void onItemError(int index, int totalCount, GameItem item, Exception error) {
+                    runOnUiThread(() -> {
+                        if (!(error instanceof CancellationException)) {
+                            Toast.makeText(MainActivity.this, "Failed to download " + item.fileName, Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+
+                @Override
+                public void onQueueFinished(int completedCount, int totalCount, boolean cancelled) {
+                    runOnUiThread(() -> {
+                        if (dialog.isShowing()) dialog.dismiss();
+                        ensureBiosSynchronized();
+                        updateBiosStatus();
+                        applyFilter(currentSearchQuery);
+                        updateFilterCounts();
+                        if (cancelled) {
+                            Toast.makeText(MainActivity.this,
+                                    "Batch download cancelled. Saved " + completedCount + " of " + totalCount + " game(s).",
+                                    Toast.LENGTH_LONG).show();
+                        } else {
+                            Toast.makeText(MainActivity.this,
+                                    "Batch download complete! " + completedCount + " game(s) saved for offline play.",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
+            });
+        }).start();
+    }
+
     private void startRomDownload(GameItem item) {
+        startRomDownload(item, true);
+    }
+
+    private void startRomDownload(GameItem item, boolean autoLaunch) {
         if (item.remoteUrl == null) {
             Toast.makeText(this, "No remote download URL available", Toast.LENGTH_SHORT).show();
             return;
@@ -1099,6 +1321,7 @@ public class MainActivity extends Activity {
                                     if (dialog.isShowing()) dialog.dismiss();
                                     item.localPath = file.getAbsolutePath();
                                     gameAdapter.notifyDataSetChanged();
+                                    updateFilterCounts();
 
                                     // If BIOS file downloaded (neogeo.zip or pgm.zip etc.)
                                     if (file.getName().equalsIgnoreCase("neogeo.zip")) {
@@ -1106,8 +1329,12 @@ public class MainActivity extends Activity {
                                         updateBiosStatus();
                                         Toast.makeText(MainActivity.this, "Neo Geo BIOS installed successfully!", Toast.LENGTH_SHORT).show();
                                     } else {
-                                        Toast.makeText(MainActivity.this, "Download complete: " + file.getName(), Toast.LENGTH_SHORT).show();
-                                        launchGameItem(item);
+                                        if (autoLaunch) {
+                                            Toast.makeText(MainActivity.this, "Download complete: " + file.getName(), Toast.LENGTH_SHORT).show();
+                                            launchGameItem(item);
+                                        } else {
+                                            Toast.makeText(MainActivity.this, "✓ Saved " + (item.name != null ? item.name : item.fileName) + " for offline play", Toast.LENGTH_SHORT).show();
+                                        }
                                     }
                                 });
                             }

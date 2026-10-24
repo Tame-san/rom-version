@@ -103,23 +103,48 @@
 
     </LinearLayout>
 
-    <!-- Right Action Cue: Play Button -->
-    <TextView
-        android:id="@+id/tv_play_btn"
+    <!-- Right Action Cues: Download / Offline Button & Play Button -->
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_play_cue"
-        android:textColor="@color/accent_gold"
-        android:textSize="12sp"
-        android:textStyle="bold"
-        android:paddingHorizontal="10dp"
-        android:paddingVertical="6dp"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:layout_marginStart="12dp"
-        android:layout_marginLeft="12dp"
-        android:text="PLAY ▶" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginStart="8dp"
+        android:layout_marginLeft="8dp">
+
+        <TextView
+            android:id="@+id/tv_download_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_download_cue"
+            android:textColor="@color/badge_net_text"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:text="⬇ SAVE" />
+
+        <TextView
+            android:id="@+id/tv_play_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_play_cue"
+            android:textColor="@color/accent_gold"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp"
+            android:paddingLeft="10dp"
+            android:paddingRight="10dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginLeft="6dp"
+            android:text="PLAY ▶" />
+    </LinearLayout>
 
 </LinearLayout>
