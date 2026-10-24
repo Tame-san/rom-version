@@ -253,3 +253,37 @@ An exhaustive security audit was executed against CWE/SANS Top 25 and OWASP Mobi
    - Download progress dialog (`dialog_download_progress.xml`) with progress bar, transfer rate, and cancel action.
    - Automatic post-download flow: BIOS synchronization for `neogeo.zip` or transparent normalization and immediate launch for game ROMs.
 
+---
+
+## 8. Offline Download & Storage Caching Manager (Completed)
+
+> **Feature**: Dedicated Offline Pre-Download, Storage Caching, and Library Filtering  
+> **Date**: 2026-10-24  
+> **Status**: Verified Operational (37 Unit Tests Passing, Debug APK Clean, Native Engine Clean)
+
+### Architecture & Components
+1. **Dual Action Controls (`item_game.xml`, `MainActivity.java`)**:
+   - **`PLAY ▶`**: Direct stream/launch action. If the title is already cached locally, it launches instantly; if remote-only, it downloads and boots immediately into emulation.
+   - **`⬇ SAVE`**: Dedicated offline download action. Downloads the game directly to [`getRomsDir()`](file:///home/the-dev/repos/rom-version/app/src/main/java/com/arcade/engine/MainActivity.java) **without launching the emulator**, updating the item status in real time to `✓ SAVED` and allowing users to continue queueing games.
+
+2. **Library Filter Chips (`ALL` | `OFFLINE` | `NETWORK`)**:
+   - Header filter tabs with live counters: `ALL (X)`, `OFFLINE (Y)`, `NETWORK (Z)`.
+   - Dynamic switching without UI hitching via cached memory bounds checking (`isDownloadedQuick()`).
+   - Automatic fallback: when disconnected from network or in airplane mode, the launcher automatically selects `OFFLINE` mode.
+
+3. **Batch Downloader & Queue Manager ([`OfflineDownloadManager.java`](file:///home/the-dev/repos/rom-version/app/src/main/java/com/arcade/engine/OfflineDownloadManager.java))**:
+   - `SAVE ALL` action in network status card computes un-downloaded game count and payload size, requests confirmation, and queues sequential background downloads.
+   - Concurrency hardening using `AtomicInteger` counters (`completedCount`, `failedCount`, `currentIndex`) and `AtomicBoolean` cancellation guards.
+   - Comprehensive error isolation and resource finalization ensuring `onQueueFinished` callbacks execute reliably.
+
+4. **Storage & Cache Management (Long-Press Menu)**:
+   - Long-press any game row to inspect and manage storage:
+     - "Play Game"
+     - "Download for Offline Play"
+     - "Delete Local Copy": Safely deletes local `.zip` file, reclaims flash storage, retains remote catalog item, and updates UI state.
+
+5. **Security Audit & Sandboxing Verifications**:
+   - **SEC-01 Sandbox Enforcement**: `deleteLocalCopy` validates `romsDir != null`, sanitizes filenames, and strictly asserts `localFile.getCanonicalPath().startsWith(canonicalRomsDir)`.
+   - **SEC-03 / SEC-06 Window & Lifecycle Leaks**: Dismisses dialogs via `safeDismissDialog()` guarded by `!isFinishing() && !isDestroyed()`, and cancels active queues/signals on `onDestroy()`.
+   - **SEC-07 UI Thread Disk I/O Elimination**: Replaced synchronous disk `File.exists()` and `File.length()` checks during list scrolling with cached local path lookups (`isDownloadedQuick()`).
+
