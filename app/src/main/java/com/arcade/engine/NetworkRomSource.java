@@ -43,10 +43,11 @@ public class NetworkRomSource {
     private static final int READ_TIMEOUT_MS = 30000;
     private static final int MAX_REDIRECTS = 5;
     private static final int BUFFER_SIZE = 32768;
+    private static final int MAX_CATALOG_CHARS = 5 * 1024 * 1024; // 5 MB upper limit (SEC-03)
 
-    // Pattern to extract <a ... href="..." ...>(optional text)</a>
+    // Pattern to extract <a ... href="..." ...>(optional text)</a> (SEC-04: Non-vulnerable ReDoS-safe matcher)
     private static final Pattern HTML_LINK_PATTERN = Pattern.compile(
-            "<a\\s+[^>]*href\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))[^>]*>(?:([\\s\\S]*?)<\\/a>)?",
+            "<a\\s+[^>]*href\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))[^>]*>(?:([^<]*)<\\/a>)?",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -616,6 +617,15 @@ public class NetworkRomSource {
 
             return destFile;
         } catch (Exception e) {
+            // SEC-06: Ensure stream handles are closed before attempting to delete tempFile
+            if (out != null) {
+                try { out.close(); } catch (Exception ignored) {}
+                out = null;
+            }
+            if (in != null) {
+                try { in.close(); } catch (Exception ignored) {}
+                in = null;
+            }
             if (tempFile.exists()) {
                 tempFile.delete();
             }
@@ -636,15 +646,22 @@ public class NetworkRomSource {
     }
 
     /**
-     * Follows HTTP 3xx redirects safely up to MAX_REDIRECTS, preventing infinite loops or scheme escapes.
+     * Follows HTTP 3xx redirects safely up to MAX_REDIRECTS, preventing infinite loops, scheme escapes,
+     * or insecure protocol downgrades (HTTPS -> HTTP).
      */
     private static HttpURLConnection openConnectionWithRedirects(String initialUrl, AtomicBoolean cancelSignal) throws IOException {
         String currentUrl = initialUrl;
+        boolean initialWasHttps = initialUrl.toLowerCase(Locale.ROOT).startsWith("https://");
         int redirectCount = 0;
 
         while (redirectCount <= MAX_REDIRECTS) {
             if (cancelSignal != null && cancelSignal.get()) {
                 throw new CancellationException("Operation cancelled");
+            }
+
+            // SEC-05: Insecure protocol downgrade prevention
+            if (initialWasHttps && currentUrl.toLowerCase(Locale.ROOT).startsWith("http://")) {
+                throw new SecurityException("Insecure protocol downgrade detected: redirect from HTTPS to HTTP (" + currentUrl + ")");
             }
 
             URL url = new URL(currentUrl);
@@ -671,6 +688,12 @@ public class NetworkRomSource {
                 URI baseUri = URI.create(currentUrl);
                 URI targetUri = baseUri.resolve(location.trim());
                 currentUrl = normalizeUrl(targetUri.toString());
+
+                // SEC-05: Check target redirect URL against downgrade
+                if (initialWasHttps && currentUrl.toLowerCase(Locale.ROOT).startsWith("http://")) {
+                    throw new SecurityException("Insecure protocol downgrade detected: redirect from HTTPS to HTTP (" + currentUrl + ")");
+                }
+
                 redirectCount++;
             } else {
                 return conn;
@@ -681,16 +704,21 @@ public class NetworkRomSource {
     }
 
     /**
-     * Reads UTF-8 response content from an InputStream with cancellation check.
+     * Reads UTF-8 response content from an InputStream with cancellation check and 5 MB size limit (SEC-03).
      */
     private static String readStringFromStream(InputStream stream, AtomicBoolean cancelSignal) throws IOException {
         StringBuilder sb = new StringBuilder();
         try (Reader reader = new InputStreamReader(new BufferedInputStream(stream), StandardCharsets.UTF_8)) {
             char[] buffer = new char[8192];
             int read;
+            int totalChars = 0;
             while ((read = reader.read(buffer)) != -1) {
                 if (cancelSignal != null && cancelSignal.get()) {
                     throw new CancellationException("Operation cancelled while reading response");
+                }
+                totalChars += read;
+                if (totalChars > MAX_CATALOG_CHARS) {
+                    throw new IOException("Catalog response exceeded maximum allowed limit of " + (MAX_CATALOG_CHARS / (1024 * 1024)) + " MB");
                 }
                 sb.append(buffer, 0, read);
             }

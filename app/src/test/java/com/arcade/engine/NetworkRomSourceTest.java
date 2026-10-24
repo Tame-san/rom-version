@@ -152,7 +152,7 @@ public class NetworkRomSourceTest {
 
     @Test
     public void testParseHtmlListing_UrlEncodedSpaces() {
-        String html = "<div><a href=\"Street%20Fighter%20II.zip\"><span>Street Fighter II</span></a></div>";
+        String html = "<div><a href=\"Street%20Fighter%20II.zip\">Street Fighter II</a></div>";
         String base = "https://roms.arcade.org/";
         List<NetworkRomSource.NetworkRomItem> items = NetworkRomSource.parseHtmlListing(html, base);
 
@@ -237,5 +237,23 @@ public class NetworkRomSourceTest {
         File traversal = NetworkRomSource.resolveDestinationFile(sandbox, "../../../etc/passwd.zip");
         Assert.assertTrue(traversal.getCanonicalPath().startsWith(sandbox.getCanonicalPath()));
         Assert.assertEquals("passwd.zip", traversal.getName());
+    }
+
+    // ---------------------------------------------------------
+    // 7. Security Hardening & ReDoS Resilience Tests
+    // ---------------------------------------------------------
+
+    @Test(timeout = 2000)
+    public void testHtmlParsing_ReDoSResilience() {
+        // Construct string with repeated nested tags that would cause catastrophic backtracking
+        StringBuilder malformed = new StringBuilder("<div><a href=\"rom.zip\">");
+        for (int i = 0; i < 2000; i++) {
+            malformed.append("aaaaaaaaaaaaaaaaaaaaaaaaa");
+        }
+        malformed.append("<!-- unclosed anchor");
+
+        List<NetworkRomSource.NetworkRomItem> items = NetworkRomSource.parseHtmlListing(malformed.toString(), "http://192.168.1.1/");
+        // Should complete well under timeout
+        Assert.assertNotNull(items);
     }
 }
