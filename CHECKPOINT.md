@@ -326,21 +326,22 @@ An exhaustive security audit was executed against CWE/SANS Top 25 and OWASP Mobi
 
 | Module | Type | Target Systems | Bundled Cores | Controllers / Viewports | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`:core-native`** | Android Library (C++17) | Shared Engine | Core Host, AAudio, GLES3 | Viewport calculation, Input, Pause HUD | **Phase 1** |
-| **`:core-ui`** | Android Library (Java) | Shared Services | Network downloader, Offline cache | GameItem, Library tabs, Storage manager | **Phase 1** |
-| **`:app-arcade`** | Application APK | SNK Neo Geo, Capcom CPS1-3, PGM | `libretro_fbneo.so` | Neo 3/4-btn, Capcom 6-btn, 4:3 Pillarbox | **Phase 1** |
+| **`:core-native`** | Android Library (C++17) | Shared Engine | Core Host, AAudio, GLES3 | Viewport calculation, Input, Pause HUD | **Complete** |
+| **`:core-ui`** | Android Library (Java) | Shared Services | Network downloader, Offline cache | GameItem, Library tabs, Storage manager | **Complete** |
+| **`:app-arcade`** | Application APK | SNK Neo Geo, Capcom CPS1-3, PGM | `libretro_fbneo.so` | Neo 3/4-btn, Capcom 6-btn, 4:3 Pillarbox | **Complete** |
 | **`:app-handheld`**| Application APK | Game Boy, Game Boy Color, GBA | `libretro_gambatte.so`, `libretro_mgba.so` | DMG 2-button, GBA L/R, 10:9 / 3:2 | **Phase 2** |
 | **`:app-n64`** | Application APK | Nintendo 64 (`.z64`, `.n64`, `.v64`) | `libretro_mupen64plus_next.so` | 3D Analog Stick, 4 C-buttons, Z-Trigger | **Phase 3** |
 
 ### Execution Checklist
 
-#### Phase 1: Foundation Refactoring (In Progress)
-- [ ] Create `:core-native` library module with CMakeLists.txt and shared C++ headers/sources (`CoreHost`, `AudioEngine`, `Renderer`, `TouchInput`, `PauseMenu`).
-- [ ] Make `core_path` and `aspect_ratio` dynamic (passed via Intent parameters from launcher activity).
-- [ ] Create `:core-ui` library module with shared Java services (`NetworkRomSource`, `OfflineDownloadManager`, `GameItem`, `SystemType`).
-- [ ] Rename/refactor `:app` into `:app-arcade` depending on `:core-native` and `:core-ui`.
-- [ ] Verify host Linux unit tests (`make -C tests`) pass with zero regressions.
-- [ ] Assemble `:app-arcade` Debug APK (`./gradlew :app-arcade:assembleDebug`).
+#### Phase 1: Foundation Refactoring (Completed & Verified)
+- [x] Create `:core-native` library module with CMakeLists.txt and shared C++ headers/sources (`CoreHost`, `AudioEngine`, `Renderer`, `TouchInput`, `PauseMenu`).
+- [x] Make `core_path` and `aspect_ratio` dynamic (passed via Intent parameters from launcher activity).
+- [x] Create `:core-ui` library module with shared Java services (`NetworkRomSource`, `OfflineDownloadManager`, `GameItem`).
+- [x] Rename/refactor `:app` into `:app-arcade` depending on `:core-native` and `:core-ui`.
+- [x] Remediate security audit findings: confine `CORE_PATH` and `CORE_NAME` to `nativeLibraryDir`, enforce `realpath` boundary checks, add JNI null checks.
+- [x] Verify host Linux unit tests (`make -C tests`) pass with zero regressions (86 assertions, 8 suites).
+- [x] Assemble `:app-arcade` Debug APK (`./gradlew :app-arcade:assembleDebug`) verified with bundled native libraries and BIOS assets.
 
 #### Phase 2: Handheld Player Module (`:app-handheld`)
 - [ ] Create `:app-handheld` module depending on `:core-native` and `:core-ui`.
