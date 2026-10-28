@@ -68,43 +68,6 @@ struct ScopedJNIEnv {
     explicit operator bool() const { return env != nullptr; }
 };
 
-static std::string get_core_path(struct android_app* app) {
-    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) {
-        return "libretro_fbneo.so";
-    }
-    ScopedJNIEnv jni(app->activity->vm);
-    JNIEnv* env = jni.get();
-    if (!env) {
-        return "libretro_fbneo.so";
-    }
-
-    std::string core_path = "libretro_fbneo.so";
-    jclass act_class = env->GetObjectClass(app->activity->clazz);
-    jmethodID getAppInfo_mid = env->GetMethodID(act_class, "getApplicationInfo", "()Landroid/content/pm/ApplicationInfo;");
-    if (getAppInfo_mid) {
-        jobject app_info = env->CallObjectMethod(app->activity->clazz, getAppInfo_mid);
-        if (app_info) {
-            jclass app_info_class = env->GetObjectClass(app_info);
-            jfieldID nativeLibDir_fid = env->GetFieldID(app_info_class, "nativeLibraryDir", "Ljava/lang/String;");
-            if (nativeLibDir_fid) {
-                jstring dir_jstr = (jstring)env->GetObjectField(app_info, nativeLibDir_fid);
-                if (dir_jstr) {
-                    const char* dir = env->GetStringUTFChars(dir_jstr, nullptr);
-                    if (dir) {
-                        core_path = std::string(dir) + "/libretro_fbneo.so";
-                        env->ReleaseStringUTFChars(dir_jstr, dir);
-                    }
-                    env->DeleteLocalRef(dir_jstr);
-                }
-            }
-            env->DeleteLocalRef(app_info_class);
-            env->DeleteLocalRef(app_info);
-        }
-    }
-    env->DeleteLocalRef(act_class);
-    return core_path;
-}
-
 static std::string get_intent_string_extra(struct android_app* app, const char* extra_name) {
     if (!app || !app->activity || !app->activity->vm || !app->activity->clazz || !extra_name) {
         return "";
@@ -142,6 +105,124 @@ static std::string get_intent_string_extra(struct android_app* app, const char* 
     }
     env->DeleteLocalRef(act_class);
     return result;
+}
+
+static float get_intent_float_extra(struct android_app* app, const char* extra_name, float default_val) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz || !extra_name) {
+        return default_val;
+    }
+    ScopedJNIEnv jni(app->activity->vm);
+    JNIEnv* env = jni.get();
+    if (!env) {
+        return default_val;
+    }
+
+    float result = default_val;
+    jclass act_class = env->GetObjectClass(app->activity->clazz);
+    jmethodID getIntent_mid = env->GetMethodID(act_class, "getIntent", "()Landroid/content/Intent;");
+    if (getIntent_mid) {
+        jobject intent = env->CallObjectMethod(app->activity->clazz, getIntent_mid);
+        if (intent) {
+            jclass intent_class = env->GetObjectClass(intent);
+            jstring key = env->NewStringUTF(extra_name);
+
+            // 1. Try getFloatExtra
+            jmethodID getFloatExtra_mid = env->GetMethodID(intent_class, "getFloatExtra", "(Ljava/lang/String;F)F");
+            if (getFloatExtra_mid) {
+                jfloat val = env->CallFloatMethod(intent, getFloatExtra_mid, key, (jfloat)default_val);
+                if (val != default_val && val > 0.0f) {
+                    result = val;
+                }
+            }
+
+            // 2. Try getStringExtra as ratio string (e.g. "4:3", "16:9", "1.3333")
+            if (result == default_val) {
+                jmethodID getStringExtra_mid = env->GetMethodID(intent_class, "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;");
+                if (getStringExtra_mid) {
+                    jstring val = (jstring)env->CallObjectMethod(intent, getStringExtra_mid, key);
+                    if (val) {
+                        const char* str = env->GetStringUTFChars(val, nullptr);
+                        if (str) {
+                            std::string s(str);
+                            if (s == "4:3" || s == "4/3") result = 4.0f / 3.0f;
+                            else if (s == "16:9" || s == "16/9") result = 16.0f / 9.0f;
+                            else if (s == "3:4" || s == "3/4") result = 3.0f / 4.0f;
+                            else if (s == "10:9" || s == "10/9") result = 10.0f / 9.0f;
+                            else if (s == "3:2" || s == "3/2") result = 3.0f / 2.0f;
+                            else if (s == "8:7" || s == "8/7") result = 8.0f / 7.0f;
+                            else {
+                                try {
+                                    float parsed = std::stof(s);
+                                    if (parsed > 0.0f) result = parsed;
+                                } catch (...) {}
+                            }
+                            env->ReleaseStringUTFChars(val, str);
+                        }
+                        env->DeleteLocalRef(val);
+                    }
+                }
+            }
+
+            env->DeleteLocalRef(key);
+            env->DeleteLocalRef(intent_class);
+            env->DeleteLocalRef(intent);
+        }
+    }
+    env->DeleteLocalRef(act_class);
+    return (result > 0.0f) ? result : default_val;
+}
+
+static std::string get_core_path(struct android_app* app) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) {
+        return "libretro_fbneo.so";
+    }
+
+    // 1. Check if CORE_PATH is explicitly set in intent
+    std::string explicit_path = get_intent_string_extra(app, "CORE_PATH");
+    if (!explicit_path.empty()) {
+        LOGI("Using explicit CORE_PATH from Intent: %s", explicit_path.c_str());
+        return explicit_path;
+    }
+
+    // 2. Check if CORE_NAME is specified, defaulting to libretro_fbneo.so
+    std::string core_name = get_intent_string_extra(app, "CORE_NAME");
+    if (core_name.empty()) {
+        core_name = "libretro_fbneo.so";
+    } else if (core_name.find(".so") == std::string::npos) {
+        core_name += ".so";
+    }
+
+    ScopedJNIEnv jni(app->activity->vm);
+    JNIEnv* env = jni.get();
+    if (!env) {
+        return core_name;
+    }
+
+    std::string core_path = core_name;
+    jclass act_class = env->GetObjectClass(app->activity->clazz);
+    jmethodID getAppInfo_mid = env->GetMethodID(act_class, "getApplicationInfo", "()Landroid/content/pm/ApplicationInfo;");
+    if (getAppInfo_mid) {
+        jobject app_info = env->CallObjectMethod(app->activity->clazz, getAppInfo_mid);
+        if (app_info) {
+            jclass app_info_class = env->GetObjectClass(app_info);
+            jfieldID nativeLibDir_fid = env->GetFieldID(app_info_class, "nativeLibraryDir", "Ljava/lang/String;");
+            if (nativeLibDir_fid) {
+                jstring dir_jstr = (jstring)env->GetObjectField(app_info, nativeLibDir_fid);
+                if (dir_jstr) {
+                    const char* dir = env->GetStringUTFChars(dir_jstr, nullptr);
+                    if (dir) {
+                        core_path = std::string(dir) + "/" + core_name;
+                        env->ReleaseStringUTFChars(dir_jstr, dir);
+                    }
+                    env->DeleteLocalRef(dir_jstr);
+                }
+            }
+            env->DeleteLocalRef(app_info_class);
+            env->DeleteLocalRef(app_info);
+        }
+    }
+    env->DeleteLocalRef(act_class);
+    return core_path;
 }
 
 static void show_android_error(struct android_app* app, const char* title, const char* message) {
@@ -276,26 +357,39 @@ static int init_display(EngineContext* engine) {
     engine->core_host.set_audio_engine(&engine->audio_engine);
     engine->core_host.set_renderer(&engine->renderer);
 
-    // 1. Load FBNeo arcade core
+    // Dynamic Aspect Ratio: inspect Intent extras (defaults to 1.3333f 4:3 if not specified)
+    float target_aspect_ratio = get_intent_float_extra(engine->app, "ASPECT_RATIO", 4.0f / 3.0f);
+    engine->renderer.set_aspect_ratio(target_aspect_ratio);
+
+    // 1. Load Libretro core (dynamic from intent CORE_NAME / CORE_PATH, default libretro_fbneo.so)
     std::string core_path = get_core_path(engine->app);
-    LOGI("Attempting to load arcade core from: %s", core_path.c_str());
+    std::string core_name = get_intent_string_extra(engine->app, "CORE_NAME");
+    if (core_name.empty()) {
+        core_name = "libretro_fbneo.so";
+    } else if (core_name.find(".so") == std::string::npos) {
+        core_name += ".so";
+    }
+
+    LOGI("Attempting to load retro core from: %s", core_path.c_str());
     if (!engine->core_host.load_core(core_path)) {
-        static const char* fallback_cores[] = {
+        std::vector<std::string> fallback_cores = {
+            core_name,
+            "/data/data/com.arcade.engine/lib/" + core_name,
             "libretro_fbneo.so",
             "/data/data/com.arcade.engine/lib/libretro_fbneo.so"
         };
-        for (const char* fb : fallback_cores) {
+        for (const auto& fb : fallback_cores) {
             if (engine->core_host.load_core(fb)) {
-                LOGI("Loaded fallback core from: %s", fb);
+                LOGI("Loaded fallback core from: %s", fb.c_str());
                 break;
             }
         }
     }
 
     if (!engine->core_host.is_core_loaded()) {
-        LOGE("Failed to load FBNeo arcade core!");
-        show_android_error(engine->app, "Arcade Core Missing",
-            "Failed to load the Libretro FBNeo arcade core library (.so).\nPlease ensure the APK was installed correctly.");
+        LOGE("Failed to load Libretro core: %s", core_path.c_str());
+        show_android_error(engine->app, "Core Missing",
+            "Failed to load the Libretro core library (.so).\nPlease ensure the APK was installed correctly.");
     }
 
     // 2. Configure System and Save Directories from Intent
@@ -356,6 +450,23 @@ static int init_display(EngineContext* engine) {
                 break;
             }
         }
+    }
+
+    // 5. Inspect SYSTEM_TYPE or PROFILE_NAME extras
+    std::string system_type_extra = get_intent_string_extra(engine->app, "SYSTEM_TYPE");
+    std::string profile_name_extra = get_intent_string_extra(engine->app, "PROFILE_NAME");
+    std::string profile_key = !profile_name_extra.empty() ? profile_name_extra : system_type_extra;
+    if (!profile_key.empty()) {
+        LOGI("Applying custom SYSTEM_TYPE / PROFILE_NAME from Intent: %s", profile_key.c_str());
+        arcade::GameProfile custom_profile = arcade::detect_game_profile(profile_key);
+        engine->core_host.set_active_profile(custom_profile);
+        engine->touch_input.configure_layout(custom_profile);
+    }
+
+    // 6. Explicit ASPECT_RATIO override if provided in intent
+    std::string explicit_ar_extra = get_intent_string_extra(engine->app, "ASPECT_RATIO");
+    if (!explicit_ar_extra.empty() && target_aspect_ratio > 0.0f) {
+        engine->renderer.set_aspect_ratio(target_aspect_ratio);
     }
 
     if (!loaded && !intent_rom.empty()) {

@@ -256,12 +256,37 @@ GameProfile detect_game_profile(const std::string& rom_path_or_name) {
         return profile;
     }
 
-    // 2. Intelligent Prefix / Substring Heuristics
+    // 2. Intelligent System Type / Prefix Heuristics
     GameProfile profile;
     profile.rom_id = id;
     profile.run_ahead_frames = 1;
 
-    if (id.rfind("mslug", 0) == 0) {
+    if (id == "neogeo" || id == "mvs" || id == "snk") {
+        profile.title = "SNK Neo Geo Arcade";
+        profile.manufacturer = "SNK";
+        profile.year = 1990;
+        profile.system = SystemType::SYSTEM_NEOGEO;
+        profile.layout = LayoutType::LAYOUT_NEO_4BUTTON;
+    } else if (id == "cps" || id == "cps1" || id == "cps2" || id == "cps3" || id == "capcom") {
+        profile.title = "Capcom CPS Arcade";
+        profile.manufacturer = "Capcom";
+        profile.year = 1995;
+        profile.system = (id == "cps1") ? SystemType::SYSTEM_CPS1 :
+                         (id == "cps3") ? SystemType::SYSTEM_CPS3 : SystemType::SYSTEM_CPS2;
+        profile.layout = LayoutType::LAYOUT_CAPCOM_6BUTTON;
+    } else if (id == "beatemup") {
+        profile.title = "Capcom Beat 'Em Up";
+        profile.manufacturer = "Capcom";
+        profile.year = 1992;
+        profile.system = SystemType::SYSTEM_CPS1;
+        profile.layout = LayoutType::LAYOUT_BEATEMUP_2BUTTON;
+    } else if (id == "pgm" || id == "igs") {
+        profile.title = "IGS PGM Arcade";
+        profile.manufacturer = "IGS";
+        profile.year = 2000;
+        profile.system = SystemType::SYSTEM_PGM;
+        profile.layout = LayoutType::LAYOUT_ARCADE_4BUTTON;
+    } else if (id.rfind("mslug", 0) == 0) {
         // Metal Slug variant
         profile.title = "Metal Slug (" + id + ")";
         profile.manufacturer = "SNK";

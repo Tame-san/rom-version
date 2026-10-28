@@ -19,24 +19,6 @@ android {
         ndk {
             abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))
         }
-
-        externalNativeBuild {
-            cmake {
-                arguments += listOf(
-                    "-DANDROID_STL=c++_static",
-                    "-DANDROID_PLATFORM=android-26"
-                )
-                cppFlags += listOf(
-                    "-std=c++17",
-                    "-O3",
-                    "-flto",
-                    "-Wall",
-                    "-Wextra",
-                    "-fexceptions",
-                    "-frtti"
-                )
-            }
-        }
     }
 
     buildTypes {
@@ -62,14 +44,6 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
-
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
-
     buildFeatures {
         prefab = false
     }
@@ -82,10 +56,12 @@ android {
 }
 
 dependencies {
+    implementation(project(":core-native"))
+    implementation(project(":core-ui"))
+
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }
-

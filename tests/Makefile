@@ -1,13 +1,13 @@
 CXX ?= g++
-CXXFLAGS ?= -std=c++17 -O3 -Wall -Wextra -pthread -I../app/src/main/cpp/include
+CXXFLAGS ?= -std=c++17 -O3 -Wall -Wextra -pthread -I../core-native/src/main/cpp/include
 LDFLAGS ?= -ldl -lpthread
 
 SRCS = test_engine.cpp \
-       ../app/src/main/cpp/src/game_profiles.cpp \
-       ../app/src/main/cpp/src/touch_input.cpp \
-       ../app/src/main/cpp/src/audio_engine.cpp \
-       ../app/src/main/cpp/src/renderer.cpp \
-       ../app/src/main/cpp/src/core_host.cpp
+       ../core-native/src/main/cpp/src/game_profiles.cpp \
+       ../core-native/src/main/cpp/src/touch_input.cpp \
+       ../core-native/src/main/cpp/src/audio_engine.cpp \
+       ../core-native/src/main/cpp/src/renderer.cpp \
+       ../core-native/src/main/cpp/src/core_host.cpp
 
 TARGET = test_engine
 
