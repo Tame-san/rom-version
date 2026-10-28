@@ -7,12 +7,12 @@
 #include <chrono>
 #include <thread>
 
-#include "../app/src/main/cpp/include/libretro.h"
-#include "../app/src/main/cpp/include/game_profiles.h"
-#include "../app/src/main/cpp/include/touch_input.h"
-#include "../app/src/main/cpp/include/audio_engine.h"
-#include "../app/src/main/cpp/include/renderer.h"
-#include "../app/src/main/cpp/include/core_host.h"
+#include "../core-native/src/main/cpp/include/libretro.h"
+#include "../core-native/src/main/cpp/include/game_profiles.h"
+#include "../core-native/src/main/cpp/include/touch_input.h"
+#include "../core-native/src/main/cpp/include/audio_engine.h"
+#include "../core-native/src/main/cpp/include/renderer.h"
+#include "../core-native/src/main/cpp/include/core_host.h"
 
 using namespace arcade;
 
@@ -100,7 +100,22 @@ void test_game_profiles() {
     TEST_CHECK(martmast.system == SystemType::SYSTEM_PGM, "martmast is IGS PGM");
     TEST_CHECK(martmast.layout == LayoutType::LAYOUT_ARCADE_4BUTTON, "martmast has 4-button layout");
 
-    // 1.8 Intelligent Heuristic Fallback
+    // 1.8 Direct System Type Name Inspection
+    GameProfile sys_neogeo = detect_game_profile("neogeo");
+    TEST_CHECK(sys_neogeo.system == SystemType::SYSTEM_NEOGEO, "Direct 'neogeo' system type detected");
+    TEST_CHECK(sys_neogeo.layout == LayoutType::LAYOUT_NEO_4BUTTON, "Neo Geo system defaults to 4-button layout");
+
+    GameProfile sys_cps2 = detect_game_profile("cps2");
+    TEST_CHECK(sys_cps2.system == SystemType::SYSTEM_CPS2, "Direct 'cps2' system type detected");
+    TEST_CHECK(sys_cps2.layout == LayoutType::LAYOUT_CAPCOM_6BUTTON, "CPS2 system defaults to Capcom 6-button layout");
+
+    GameProfile sys_beatemup = detect_game_profile("beatemup");
+    TEST_CHECK(sys_beatemup.layout == LayoutType::LAYOUT_BEATEMUP_2BUTTON, "Beat-em-up system defaults to 2-button layout");
+
+    GameProfile sys_pgm = detect_game_profile("pgm");
+    TEST_CHECK(sys_pgm.system == SystemType::SYSTEM_PGM, "Direct 'pgm' system type detected");
+
+    // 1.9 Intelligent Heuristic Fallback
     GameProfile unknown_slug = detect_game_profile("mslug_turbo_edition.zip");
     TEST_CHECK(unknown_slug.layout == LayoutType::LAYOUT_NEO_3BUTTON, "Heuristic detects mslug variant");
 
@@ -109,6 +124,11 @@ void test_game_profiles() {
 
     GameProfile generic_game = detect_game_profile("random_arcade_game");
     TEST_CHECK(generic_game.layout == LayoutType::LAYOUT_ARCADE_4BUTTON, "Fallback to default 4-button arcade");
+
+    // 1.10 CoreHost Dynamic Profile Configuration
+    CoreHost host;
+    host.set_active_profile(sys_cps2);
+    TEST_CHECK(host.get_active_profile().layout == LayoutType::LAYOUT_CAPCOM_6BUTTON, "CoreHost::set_active_profile configures active layout");
 }
 
 // -------------------------------------------------------------
@@ -606,11 +626,18 @@ void test_security_hardening() {
     TEST_CHECK(CoreHost::is_safe_rom_path("garou.7z"), "Allow safe 7z ROM path");
     TEST_CHECK(CoreHost::is_safe_rom_path("kof98"), "Allow canonical ROM identifier");
 
-    // 6.2 SEC-06: Shared Object Core Path Rejection
+    // 6.2 SEC-06 & SEC-FIND-01: Shared Object Core Path Rejection & Sandbox Confining
     TEST_CHECK(!CoreHost::is_safe_core_path("../../data/malicious.so"), "Reject core traversal ../../malicious.so (SEC-06)");
     TEST_CHECK(!CoreHost::is_safe_core_path("/sdcard/core.apk"), "Reject non-so core file (SEC-06)");
     TEST_CHECK(!CoreHost::is_safe_core_path(""), "Reject empty core path (SEC-06)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("malicious/sub/core.so"), "Reject relative path with separators (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("core\\backslash.so"), "Reject backslash separators (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("/sdcard/malicious.so"), "Reject untrusted /sdcard core (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("/tmp/malicious.so"), "Reject untrusted /tmp core (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("/data/local/tmp/core.so"), "Reject untrusted /data/local/tmp core (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("libretro;evil.so"), "Reject invalid characters in bare core name (SEC-FIND-01)");
     TEST_CHECK(CoreHost::is_safe_core_path("/data/data/com.arcade.engine/lib/libretro_fbneo.so"), "Allow sandboxed so path (SEC-06)");
+    TEST_CHECK(CoreHost::is_safe_core_path("/data/app/~~xyz==/com.arcade.engine-abc/lib/arm64/libretro_fbneo.so"), "Allow nativeLibraryDir sandboxed path (SEC-FIND-01)");
     TEST_CHECK(CoreHost::is_safe_core_path("libretro_fbneo.so"), "Allow relative system so name (SEC-06)");
 
     // 6.2 SEC-03: Reject RETRO_HW_FRAME_BUFFER_VALID in Renderer

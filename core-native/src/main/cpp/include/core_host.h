@@ -56,10 +56,16 @@ public:
     const std::string& get_system_directory() const { return system_dir_; }
     const std::string& get_save_directory() const { return save_dir_; }
 
-    // State inspections
+    // State inspections & profile management
     bool is_core_loaded() const { return core_handle_ != nullptr; }
     bool is_game_loaded() const { return game_loaded_; }
     const GameProfile& get_active_profile() const { return active_profile_; }
+    void set_active_profile(const GameProfile& profile) {
+        active_profile_ = profile;
+        if (touch_input_) {
+            touch_input_->configure_layout(active_profile_);
+        }
+    }
     const struct retro_system_av_info& get_av_info() const { return av_info_; }
     const struct retro_system_av_info& get_system_av_info() const { return av_info_; }
     double get_fps() const { return av_info_.timing.fps; }

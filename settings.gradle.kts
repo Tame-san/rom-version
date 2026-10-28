@@ -14,5 +14,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AndroidArcadeEngine"
-include(":app")
+rootProject.name = "AndroidRetroEngine"
+include(":core-native")
+include(":core-ui")
+include(":app-arcade")

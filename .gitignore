@@ -3,6 +3,7 @@
 mame/roms/*.zip
 mame/bios/*.zip
 !app/src/main/assets/bios/*.zip
+!app-arcade/src/main/assets/bios/*.zip
 
 # Keep directories
 !mame/
@@ -16,6 +17,9 @@ Roms
 .gradle/
 build/
 app/build/
+app-arcade/build/
+core-native/build/
+core-ui/build/
 .cxx/
 local.properties
 *.apk
@@ -23,7 +27,7 @@ local.properties
 
 # Native libraries in jniLibs
 app/src/main/jniLibs/**/*.so
+app-arcade/src/main/jniLibs/**/*.so
 
 # Test binaries
 tests/test_engine
-
