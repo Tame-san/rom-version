@@ -314,4 +314,48 @@ An exhaustive security audit was executed against CWE/SANS Top 25 and OWASP Mobi
 3. **Older & Budget Device Optimization (`AudioEngine`)**:
    - **AAudio SHARED Mode Buffer Scaling**: On devices without exclusive MMAP support (budget/older chipsets), buffer capacity automatically scales to `max(burst * 4, 384 frames)`, eliminating audio underruns and crackling while maintaining low latency.
 
+---
+
+## 10. Targeted Multi-APK Monorepo Architecture Tracking
+
+> **Status**: IN PROGRESS  
+> **Target**: Modular Multi-System Architecture with Targeted Standalone APKs  
+> **Date**: 2026-10-28  
+
+### Module Structure & System Matrix
+
+| Module | Type | Target Systems | Bundled Cores | Controllers / Viewports | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`:core-native`** | Android Library (C++17) | Shared Engine | Core Host, AAudio, GLES3 | Viewport calculation, Input, Pause HUD | **Phase 1** |
+| **`:core-ui`** | Android Library (Java) | Shared Services | Network downloader, Offline cache | GameItem, Library tabs, Storage manager | **Phase 1** |
+| **`:app-arcade`** | Application APK | SNK Neo Geo, Capcom CPS1-3, PGM | `libretro_fbneo.so` | Neo 3/4-btn, Capcom 6-btn, 4:3 Pillarbox | **Phase 1** |
+| **`:app-handheld`**| Application APK | Game Boy, Game Boy Color, GBA | `libretro_gambatte.so`, `libretro_mgba.so` | DMG 2-button, GBA L/R, 10:9 / 3:2 | **Phase 2** |
+| **`:app-n64`** | Application APK | Nintendo 64 (`.z64`, `.n64`, `.v64`) | `libretro_mupen64plus_next.so` | 3D Analog Stick, 4 C-buttons, Z-Trigger | **Phase 3** |
+
+### Execution Checklist
+
+#### Phase 1: Foundation Refactoring (In Progress)
+- [ ] Create `:core-native` library module with CMakeLists.txt and shared C++ headers/sources (`CoreHost`, `AudioEngine`, `Renderer`, `TouchInput`, `PauseMenu`).
+- [ ] Make `core_path` and `aspect_ratio` dynamic (passed via Intent parameters from launcher activity).
+- [ ] Create `:core-ui` library module with shared Java services (`NetworkRomSource`, `OfflineDownloadManager`, `GameItem`, `SystemType`).
+- [ ] Rename/refactor `:app` into `:app-arcade` depending on `:core-native` and `:core-ui`.
+- [ ] Verify host Linux unit tests (`make -C tests`) pass with zero regressions.
+- [ ] Assemble `:app-arcade` Debug APK (`./gradlew :app-arcade:assembleDebug`).
+
+#### Phase 2: Handheld Player Module (`:app-handheld`)
+- [ ] Create `:app-handheld` module depending on `:core-native` and `:core-ui`.
+- [ ] Add `libretro_gambatte.so` (GB/GBC) and `libretro_mgba.so` (GBA).
+- [ ] Add handheld touch controller profiles (DMG A/B + Select/Start, GBA L/R).
+- [ ] Configure 10:9 (GB) and 3:2 (GBA) viewport aspect ratio modes.
+- [ ] Verify test suite and assemble `:app-handheld:assembleDebug`.
+
+#### Phase 3: Nintendo 64 Player Module (`:app-n64`)
+- [ ] Create `:app-n64` module depending on `:core-native` and `:core-ui`.
+- [ ] Add `libretro_mupen64plus_next.so` (arm64-v8a).
+- [ ] Implement Libretro Hardware Render callback (`RETRO_ENVIRONMENT_SET_HW_RENDER`) with GLES3 FBO context sharing.
+- [ ] Add N64 controller profile: 3D Analog Stick, Z-Trigger, 4-way C-button cluster, A, B, Start, L, R.
+- [ ] Disable RunAhead specifically for N64 in `CoreHost` to prevent state rollback stutter.
+- [ ] Verify test suite and assemble `:app-n64:assembleDebug`.
+
+
 
