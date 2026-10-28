@@ -526,9 +526,10 @@ public class MainActivity extends Activity {
     private String getFileNameFromUri(Uri uri) {
         DocumentFile doc = DocumentFile.fromSingleUri(this, uri);
         if (doc != null && doc.getName() != null) {
-            return doc.getName();
+            return new File(doc.getName()).getName();
         }
-        return uri.getLastPathSegment();
+        String lastSegment = uri.getLastPathSegment();
+        return lastSegment != null ? new File(lastSegment).getName() : "unknown_rom";
     }
 
     private void scanDocumentTree(Uri treeUri) {
