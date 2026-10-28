@@ -10,6 +10,9 @@
 #include <thread>
 #include <string>
 #include <vector>
+#include <climits>
+#include <cstdlib>
+#include <cctype>
 
 #include "libretro.h"
 #include "game_profiles.h"
@@ -172,33 +175,17 @@ static float get_intent_float_extra(struct android_app* app, const char* extra_n
     return (result > 0.0f) ? result : default_val;
 }
 
-static std::string get_core_path(struct android_app* app) {
+static std::string get_native_library_dir(struct android_app* app) {
     if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) {
-        return "libretro_fbneo.so";
+        return "";
     }
-
-    // 1. Check if CORE_PATH is explicitly set in intent
-    std::string explicit_path = get_intent_string_extra(app, "CORE_PATH");
-    if (!explicit_path.empty()) {
-        LOGI("Using explicit CORE_PATH from Intent: %s", explicit_path.c_str());
-        return explicit_path;
-    }
-
-    // 2. Check if CORE_NAME is specified, defaulting to libretro_fbneo.so
-    std::string core_name = get_intent_string_extra(app, "CORE_NAME");
-    if (core_name.empty()) {
-        core_name = "libretro_fbneo.so";
-    } else if (core_name.find(".so") == std::string::npos) {
-        core_name += ".so";
-    }
-
     ScopedJNIEnv jni(app->activity->vm);
     JNIEnv* env = jni.get();
     if (!env) {
-        return core_name;
+        return "";
     }
 
-    std::string core_path = core_name;
+    std::string lib_dir;
     jclass act_class = env->GetObjectClass(app->activity->clazz);
     jmethodID getAppInfo_mid = env->GetMethodID(act_class, "getApplicationInfo", "()Landroid/content/pm/ApplicationInfo;");
     if (getAppInfo_mid) {
@@ -211,7 +198,7 @@ static std::string get_core_path(struct android_app* app) {
                 if (dir_jstr) {
                     const char* dir = env->GetStringUTFChars(dir_jstr, nullptr);
                     if (dir) {
-                        core_path = std::string(dir) + "/" + core_name;
+                        lib_dir = dir;
                         env->ReleaseStringUTFChars(dir_jstr, dir);
                     }
                     env->DeleteLocalRef(dir_jstr);
@@ -222,7 +209,72 @@ static std::string get_core_path(struct android_app* app) {
         }
     }
     env->DeleteLocalRef(act_class);
-    return core_path;
+    return lib_dir;
+}
+
+static std::string sanitize_core_name(const std::string& input_name) {
+    if (input_name.empty()) {
+        return "libretro_fbneo.so";
+    }
+
+    // Strip any path separators
+    size_t last_slash = input_name.find_last_of("/\\");
+    std::string name = (last_slash != std::string::npos) ? input_name.substr(last_slash + 1) : input_name;
+
+    if (name.empty() || name == "." || name == "..") {
+        return "libretro_fbneo.so";
+    }
+
+    // Ensure ending in .so
+    if (name.length() < 3 || name.substr(name.length() - 3) != ".so") {
+        name += ".so";
+    }
+
+    // Strictly alphanumeric, underscores, hyphens, and dots
+    for (char c : name) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-' && c != '.') {
+            return "libretro_fbneo.so";
+        }
+    }
+
+    return name;
+}
+
+static std::string get_core_path(struct android_app* app) {
+    std::string lib_dir = get_native_library_dir(app);
+
+    // 1. Check if CORE_PATH is explicitly set in intent and verify boundary confinement
+    std::string explicit_path = get_intent_string_extra(app, "CORE_PATH");
+    if (!explicit_path.empty()) {
+        if (explicit_path.find("..") == std::string::npos && !lib_dir.empty()) {
+            std::string prefix = lib_dir;
+            if (prefix.back() != '/') prefix += '/';
+            if (explicit_path.rfind(prefix, 0) == 0) {
+                char resolved[PATH_MAX];
+                if (realpath(explicit_path.c_str(), resolved) != nullptr) {
+                    std::string res_str(resolved);
+                    if (res_str.rfind(prefix, 0) == 0) {
+                        LOGI("Using verified confined CORE_PATH from Intent: %s", res_str.c_str());
+                        return res_str;
+                    }
+                } else {
+                    LOGI("Using confined CORE_PATH from Intent: %s", explicit_path.c_str());
+                    return explicit_path;
+                }
+            }
+        }
+        LOGW("Explicit CORE_PATH rejected or not confined within nativeLibraryDir (%s): %s",
+             lib_dir.c_str(), explicit_path.c_str());
+    }
+
+    // 2. Resolve sanitized CORE_NAME within nativeLibraryDir
+    std::string raw_name = get_intent_string_extra(app, "CORE_NAME");
+    std::string core_name = sanitize_core_name(raw_name);
+
+    if (!lib_dir.empty()) {
+        return lib_dir + "/" + core_name;
+    }
+    return core_name;
 }
 
 static void show_android_error(struct android_app* app, const char* title, const char* message) {
@@ -233,8 +285,8 @@ static void show_android_error(struct android_app* app, const char* title, const
         jclass act_class = env->GetObjectClass(app->activity->clazz);
         jmethodID showFatalError_mid = env->GetMethodID(act_class, "showFatalError", "(Ljava/lang/String;Ljava/lang/String;)V");
         if (showFatalError_mid) {
-            jstring jtitle = env->NewStringUTF(title);
-            jstring jmsg = env->NewStringUTF(message);
+            jstring jtitle = env->NewStringUTF(title ? title : "");
+            jstring jmsg = env->NewStringUTF(message ? message : "");
             env->CallVoidMethod(app->activity->clazz, showFatalError_mid, jtitle, jmsg);
             env->DeleteLocalRef(jtitle);
             env->DeleteLocalRef(jmsg);
@@ -363,23 +415,22 @@ static int init_display(EngineContext* engine) {
 
     // 1. Load Libretro core (dynamic from intent CORE_NAME / CORE_PATH, default libretro_fbneo.so)
     std::string core_path = get_core_path(engine->app);
-    std::string core_name = get_intent_string_extra(engine->app, "CORE_NAME");
-    if (core_name.empty()) {
-        core_name = "libretro_fbneo.so";
-    } else if (core_name.find(".so") == std::string::npos) {
-        core_name += ".so";
-    }
+    std::string raw_name = get_intent_string_extra(engine->app, "CORE_NAME");
+    std::string core_name = sanitize_core_name(raw_name);
+    std::string lib_dir = get_native_library_dir(engine->app);
 
     LOGI("Attempting to load retro core from: %s", core_path.c_str());
     if (!engine->core_host.load_core(core_path)) {
-        std::vector<std::string> fallback_cores = {
-            core_name,
-            "/data/data/com.arcade.engine/lib/" + core_name,
-            "libretro_fbneo.so",
-            "/data/data/com.arcade.engine/lib/libretro_fbneo.so"
-        };
+        std::vector<std::string> fallback_cores;
+        if (!lib_dir.empty()) {
+            fallback_cores.push_back(lib_dir + "/" + core_name);
+            fallback_cores.push_back(lib_dir + "/libretro_fbneo.so");
+        }
+        fallback_cores.push_back(core_name);
+        fallback_cores.push_back("libretro_fbneo.so");
+
         for (const auto& fb : fallback_cores) {
-            if (engine->core_host.load_core(fb)) {
+            if (fb != core_path && engine->core_host.load_core(fb)) {
                 LOGI("Loaded fallback core from: %s", fb.c_str());
                 break;
             }

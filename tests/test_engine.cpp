@@ -626,11 +626,18 @@ void test_security_hardening() {
     TEST_CHECK(CoreHost::is_safe_rom_path("garou.7z"), "Allow safe 7z ROM path");
     TEST_CHECK(CoreHost::is_safe_rom_path("kof98"), "Allow canonical ROM identifier");
 
-    // 6.2 SEC-06: Shared Object Core Path Rejection
+    // 6.2 SEC-06 & SEC-FIND-01: Shared Object Core Path Rejection & Sandbox Confining
     TEST_CHECK(!CoreHost::is_safe_core_path("../../data/malicious.so"), "Reject core traversal ../../malicious.so (SEC-06)");
     TEST_CHECK(!CoreHost::is_safe_core_path("/sdcard/core.apk"), "Reject non-so core file (SEC-06)");
     TEST_CHECK(!CoreHost::is_safe_core_path(""), "Reject empty core path (SEC-06)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("malicious/sub/core.so"), "Reject relative path with separators (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("core\\backslash.so"), "Reject backslash separators (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("/sdcard/malicious.so"), "Reject untrusted /sdcard core (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("/tmp/malicious.so"), "Reject untrusted /tmp core (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("/data/local/tmp/core.so"), "Reject untrusted /data/local/tmp core (SEC-FIND-01)");
+    TEST_CHECK(!CoreHost::is_safe_core_path("libretro;evil.so"), "Reject invalid characters in bare core name (SEC-FIND-01)");
     TEST_CHECK(CoreHost::is_safe_core_path("/data/data/com.arcade.engine/lib/libretro_fbneo.so"), "Allow sandboxed so path (SEC-06)");
+    TEST_CHECK(CoreHost::is_safe_core_path("/data/app/~~xyz==/com.arcade.engine-abc/lib/arm64/libretro_fbneo.so"), "Allow nativeLibraryDir sandboxed path (SEC-FIND-01)");
     TEST_CHECK(CoreHost::is_safe_core_path("libretro_fbneo.so"), "Allow relative system so name (SEC-06)");
 
     // 6.2 SEC-03: Reject RETRO_HW_FRAME_BUFFER_VALID in Renderer

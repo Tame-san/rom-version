@@ -43,14 +43,47 @@ bool CoreHost::is_safe_rom_path(const std::string& path) {
 
 bool CoreHost::is_safe_core_path(const std::string& path) {
     if (path.empty()) return false;
-    // SEC-06: Reject directory traversal sequences
-    if (path.find("..") != std::string::npos) {
+
+    // SEC-06 / SEC-FIND-01: Reject directory traversal sequences and backslashes
+    if (path.find("..") != std::string::npos || path.find('\\') != std::string::npos) {
         return false;
     }
+
     // Must be a valid shared object (.so)
     if (path.length() < 3 || path.substr(path.length() - 3) != ".so") {
         return false;
     }
+
+    // Bare library name (e.g. "libretro_fbneo.so") resolved via system dynamic linker
+    if (path.find('/') == std::string::npos) {
+        for (char c : path) {
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-' && c != '.') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // If path contains '/', it MUST be an absolute path starting with '/'
+    if (path[0] != '/') {
+        return false;
+    }
+
+    // Reject non-sandboxed / untrusted storage locations
+    static const char* const forbidden_prefixes[] = {
+        "/sdcard",
+        "/storage",
+        "/tmp",
+        "/data/local",
+        "/mnt"
+    };
+    for (const char* forbidden : forbidden_prefixes) {
+        size_t len = std::strlen(forbidden);
+        if (path.compare(0, len, forbidden) == 0) {
+            return false;
+        }
+    }
+
     return true;
 }
 
