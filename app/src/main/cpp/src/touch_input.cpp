@@ -73,6 +73,23 @@ void TouchInput::resize(int screen_width, int screen_height) {
     menu_btn.is_menu_trigger = true;
     topbar_buttons_.push_back(menu_btn);
 
+    // Pause Menu Card & Buttons
+    pause_buttons_.clear();
+    float card_w = std::min(screen_w_ * 0.44f, screen_h_ * 0.78f);
+    float card_h = screen_h_ * 0.48f;
+    float card_x = (screen_w_ - card_w) * 0.5f;
+    float card_y = (screen_h_ - card_h) * 0.5f;
+
+    float btn_w = card_w * 0.82f;
+    float btn_h = card_h * 0.18f;
+    float btn_x = card_x + (card_w - btn_w) * 0.5f;
+    float start_y = card_y + card_h * 0.30f;
+    float gap_y = card_h * 0.22f;
+
+    pause_buttons_.push_back({ "RESUME",  PauseAction::RESUME,  btn_x, start_y,               btn_w, btn_h, false });
+    pause_buttons_.push_back({ "RESTART", PauseAction::RESTART, btn_x, start_y + gap_y,       btn_w, btn_h, false });
+    pause_buttons_.push_back({ "QUIT",    PauseAction::QUIT,    btn_x, start_y + gap_y * 2.0f, btn_w, btn_h, false });
+
     update_layout_coordinates();
 }
 
@@ -85,11 +102,13 @@ void TouchInput::configure_layout(const GameProfile& profile) {
 void TouchInput::update_layout_coordinates() {
     buttons_.clear();
 
-    float cluster_x = screen_w_ * 0.83f;
-    float cluster_y = screen_h_ * 0.68f;
-    float spread_x = screen_w_ * 0.125f;
+    // Aspect-ratio safe scaling: ensure horizontal spread scales proportionally
+    // to screen height so buttons never crowd or overlap on 16:9, 18:9, or 20:9
+    float spread_x = std::max(screen_w_ * 0.125f, screen_h_ * 0.25f);
     float spread_y = screen_h_ * 0.22f;
-    float base_radius = screen_h_ * 0.088f;
+    float base_radius = screen_h_ * 0.082f;
+    float cluster_x = std::min(screen_w_ * 0.84f, screen_w_ - spread_x * 0.82f - base_radius);
+    float cluster_y = screen_h_ * 0.68f;
 
     for (const auto& desc : current_profile_.buttons) {
         RenderableButton btn;
@@ -180,6 +199,21 @@ void TouchInput::on_touch_down(int pointer_id, float x, float y) {
     p.role = PointerRole::ROLE_NONE;
     p.target_button_index = -1;
 
+    // Handle touch events during Pause Menu
+    if (is_paused_) {
+        for (size_t i = 0; i < pause_buttons_.size(); ++i) {
+            auto& pb = pause_buttons_[i];
+            if (x >= pb.x && x <= pb.x + pb.width &&
+                y >= pb.y && y <= pb.y + pb.height) {
+                pb.pressed = true;
+                pending_pause_action_ = pb.action;
+                p.target_button_index = static_cast<int>(i);
+                return;
+            }
+        }
+        return;
+    }
+
     // 1. Check Top Bar (Start, Coin, Menu)
     for (size_t i = 0; i < topbar_buttons_.size(); ++i) {
         auto& tb = topbar_buttons_[i];
@@ -232,14 +266,14 @@ void TouchInput::on_touch_down(int pointer_id, float x, float y) {
             }
         }
 
-        // Standard hit test with 25% generous touch padding
+        // Standard hit test with 15% touch padding and closest button selection
         int hit_index = -1;
         float min_dist_sq = 1e9f;
         for (size_t i = 0; i < buttons_.size(); ++i) {
             float dx = x - buttons_[i].x;
             float dy = y - buttons_[i].y;
             float dist_sq = dx * dx + dy * dy;
-            float touch_r = buttons_[i].radius * 1.25f;
+            float touch_r = buttons_[i].radius * 1.15f;
             if (dist_sq <= touch_r * touch_r && dist_sq < min_dist_sq) {
                 min_dist_sq = dist_sq;
                 hit_index = static_cast<int>(i);
@@ -257,6 +291,7 @@ void TouchInput::on_touch_down(int pointer_id, float x, float y) {
 
 void TouchInput::on_touch_move(int pointer_id, float x, float y) {
     if (pointer_id < 0 || pointer_id >= MAX_POINTERS) return;
+    if (is_paused_) return;
 
     TouchPointer& p = pointers_[pointer_id];
     if (!p.active) return;
@@ -290,13 +325,20 @@ void TouchInput::on_touch_move(int pointer_id, float x, float y) {
                     }
                 }
 
-                for (auto& btn : buttons_) {
-                    float dx = px - btn.x;
-                    float dy = py - btn.y;
-                    float touch_r = btn.radius * 1.25f;
-                    if (dx * dx + dy * dy <= touch_r * touch_r) {
-                        btn.pressed = true;
+                int closest_btn = -1;
+                float min_dist_sq = 1e9f;
+                for (size_t b = 0; b < buttons_.size(); ++b) {
+                    float dx = px - buttons_[b].x;
+                    float dy = py - buttons_[b].y;
+                    float dist_sq = dx * dx + dy * dy;
+                    float touch_r = buttons_[b].radius * 1.15f;
+                    if (dist_sq <= touch_r * touch_r && dist_sq < min_dist_sq) {
+                        min_dist_sq = dist_sq;
+                        closest_btn = static_cast<int>(b);
                     }
+                }
+                if (closest_btn != -1) {
+                    buttons_[closest_btn].pressed = true;
                 }
             }
         }
@@ -309,6 +351,14 @@ void TouchInput::on_touch_up(int pointer_id) {
 
     TouchPointer& p = pointers_[pointer_id];
     if (!p.active) return;
+
+    if (is_paused_) {
+        for (auto& pb : pause_buttons_) {
+            pb.pressed = false;
+        }
+        p.active = false;
+        return;
+    }
 
     if (p.role == PointerRole::ROLE_DPAD && dpad_pointer_id_ == pointer_id) {
         dpad_active_ = false;
@@ -433,6 +483,23 @@ bool TouchInput::check_and_clear_menu_trigger() {
     bool val = menu_triggered_;
     menu_triggered_ = false;
     return val;
+}
+
+void TouchInput::set_paused(bool paused) {
+    is_paused_ = paused;
+    if (is_paused_) {
+        on_touch_cancel();
+        // Reset any pending button presses
+        for (auto& pb : pause_buttons_) {
+            pb.pressed = false;
+        }
+    }
+}
+
+PauseAction TouchInput::check_and_clear_pause_action() {
+    PauseAction act = pending_pause_action_;
+    pending_pause_action_ = PauseAction::NONE;
+    return act;
 }
 
 RenderableDpad TouchInput::get_renderable_dpad() const {

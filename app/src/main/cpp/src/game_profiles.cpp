@@ -79,22 +79,22 @@ std::vector<VirtualButtonDesc> generate_layout_buttons(LayoutType layout) {
 
         case LayoutType::LAYOUT_NEO_4BUTTON: {
             // Classic SNK Neo Geo MVS 4-button arch (A-B-C-D):
-            // Ergonomically curved for natural thumb sweep
+            // Ergonomically curved for natural thumb sweep with clean spacing
             buttons.push_back({
                 "A", "LP", RETRO_DEVICE_ID_JOYPAD_B,
-                -0.78f, 0.40f, 1.10f, 0xEE3333EE // Red: Light Punch
+                -0.75f, 0.38f, 0.95f, 0xEE3333EE // Red: Light Punch
             });
             buttons.push_back({
                 "B", "LK", RETRO_DEVICE_ID_JOYPAD_A,
-                -0.28f, -0.05f, 1.10f, 0xEECC22EE // Yellow: Light Kick
+                -0.25f, -0.05f, 0.95f, 0xEECC22EE // Yellow: Light Kick
             });
             buttons.push_back({
                 "C", "HP", RETRO_DEVICE_ID_JOYPAD_Y,
-                0.22f, -0.28f, 1.10f, 0x33CC33EE // Green: Heavy Punch
+                0.25f, -0.28f, 0.95f, 0x33CC33EE // Green: Heavy Punch
             });
             buttons.push_back({
                 "D", "HK", RETRO_DEVICE_ID_JOYPAD_X,
-                0.72f, -0.15f, 1.10f, 0x3388FFEE // Blue: Heavy Kick
+                0.75f, -0.15f, 0.95f, 0x3388FFEE // Blue: Heavy Kick
             });
             break;
         }
@@ -103,30 +103,31 @@ std::vector<VirtualButtonDesc> generate_layout_buttons(LayoutType layout) {
             // Capcom 6-button fighting layout (SF2, Darkstalkers):
             // Top Row: Light Punch (LP), Medium Punch (MP), Heavy Punch (HP)
             // Bottom Row: Light Kick (LK), Medium Kick (MK), Heavy Kick (HK)
+            // Sized with 0.82f radius scale to guarantee zero collision across all phone aspect ratios
             buttons.push_back({
                 "LP", "Y", RETRO_DEVICE_ID_JOYPAD_Y,
-                -0.62f, -0.45f, 1.00f, 0x3399FFEE // Light Blue
+                -0.62f, -0.45f, 0.82f, 0x3399FFEE // Light Blue
             });
             buttons.push_back({
                 "MP", "X", RETRO_DEVICE_ID_JOYPAD_X,
-                0.00f, -0.50f, 1.00f, 0xEECC22EE // Yellow
+                0.00f, -0.50f, 0.82f, 0xEECC22EE // Yellow
             });
             buttons.push_back({
                 "HP", "L", RETRO_DEVICE_ID_JOYPAD_L,
-                0.62f, -0.45f, 1.00f, 0xEE3333EE // Red
+                0.62f, -0.45f, 0.82f, 0xEE3333EE // Red
             });
 
             buttons.push_back({
                 "LK", "B", RETRO_DEVICE_ID_JOYPAD_B,
-                -0.62f, 0.45f, 1.00f, 0x3399FFEE // Light Blue
+                -0.62f, 0.45f, 0.82f, 0x3399FFEE // Light Blue
             });
             buttons.push_back({
                 "MK", "A", RETRO_DEVICE_ID_JOYPAD_A,
-                0.00f, 0.50f, 1.00f, 0xEECC22EE // Yellow
+                0.00f, 0.50f, 0.82f, 0xEECC22EE // Yellow
             });
             buttons.push_back({
                 "HK", "R", RETRO_DEVICE_ID_JOYPAD_R,
-                0.62f, 0.45f, 1.00f, 0xEE3333EE // Red
+                0.62f, 0.45f, 0.82f, 0xEE3333EE // Red
             });
             break;
         }

@@ -74,6 +74,7 @@ private:
     void render_game();
     void render_splash_screen();
     void render_touch_overlay(const TouchInput& touch_input);
+    void render_pause_menu(const TouchInput& touch_input);
     void draw_circle(float cx, float cy, float radius, uint32_t color_rgba, float alpha_mult = 1.0f);
     void draw_circle_ring(float cx, float cy, float inner_r, float outer_r, uint32_t color_rgba, float alpha_mult = 1.0f);
     void draw_rect(float x, float y, float w, float h, uint32_t color_rgba, float alpha_mult = 1.0f);

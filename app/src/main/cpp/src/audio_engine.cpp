@@ -173,10 +173,12 @@ bool AudioEngine::start(int sample_rate, int channels) {
     AAudioStreamBuilder_setErrorCallback(builder, error_callback, this);
 
     res = AAudioStreamBuilder_openStream(builder, &stream_);
+    bool is_shared = false;
     if (res != AAUDIO_OK) {
         LOGW("Exclusive AAudio mode failed (%d), falling back to SHARED mode", res);
         AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
         res = AAudioStreamBuilder_openStream(builder, &stream_);
+        is_shared = true;
     }
 
     AAudioStreamBuilder_delete(builder);
@@ -187,9 +189,11 @@ bool AudioEngine::start(int sample_rate, int channels) {
         return false;
     }
 
-    // Set buffer capacity in frames to optimal low latency burst size
+    // Set buffer capacity in frames: tight 2x burst for MMAP exclusive mode (<10ms),
+    // and deeper 4x burst (or 384 frames) in SHARED mode to prevent audio crackling on older/budget SoCs
     int32_t burst = AAudioStream_getFramesPerBurst(stream_);
-    AAudioStream_setBufferSizeInFrames(stream_, burst * 2);
+    int32_t buffer_frames = is_shared ? std::max(burst * 4, 384) : (burst * 2);
+    AAudioStream_setBufferSizeInFrames(stream_, buffer_frames);
 
     res = AAudioStream_requestStart(stream_);
     if (res != AAUDIO_OK) {

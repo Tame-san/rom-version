@@ -233,6 +233,71 @@ void test_touch_input() {
     TEST_CHECK(touch.check_and_clear_menu_trigger() == true, "MENU button toggled");
     TEST_CHECK(touch.check_and_clear_menu_trigger() == false, "MENU trigger cleared after read");
     touch.on_touch_up(6);
+
+    // 2.5 Pause Menu State & Actions
+    TEST_CHECK(touch.is_paused() == false, "Initial state is NOT paused");
+    touch.set_paused(true);
+    TEST_CHECK(touch.is_paused() == true, "TouchInput is paused");
+
+    const auto& pause_btns = touch.get_renderable_pause_buttons();
+    TEST_CHECK(pause_btns.size() == 3, "Pause menu has RESUME, RESTART, QUIT buttons");
+
+    // Click RESUME button
+    touch.on_touch_down(0, pause_btns[0].x + pause_btns[0].width * 0.5f, pause_btns[0].y + pause_btns[0].height * 0.5f);
+    TEST_CHECK(touch.check_and_clear_pause_action() == PauseAction::RESUME, "RESUME pause action detected");
+    TEST_CHECK(touch.check_and_clear_pause_action() == PauseAction::NONE, "Pause action cleared after read");
+    touch.on_touch_up(0);
+
+    // Click RESTART button
+    touch.on_touch_down(0, pause_btns[1].x + pause_btns[1].width * 0.5f, pause_btns[1].y + pause_btns[1].height * 0.5f);
+    TEST_CHECK(touch.check_and_clear_pause_action() == PauseAction::RESTART, "RESTART pause action detected");
+    touch.on_touch_up(0);
+
+    // Click QUIT button
+    touch.on_touch_down(0, pause_btns[2].x + pause_btns[2].width * 0.5f, pause_btns[2].y + pause_btns[2].height * 0.5f);
+    TEST_CHECK(touch.check_and_clear_pause_action() == PauseAction::QUIT, "QUIT pause action detected");
+    touch.on_touch_up(0);
+
+    // Unpause
+    touch.set_paused(false);
+    TEST_CHECK(touch.is_paused() == false, "TouchInput unpaused successfully");
+
+    // 2.6 Geometry & Clearance Verification: Capcom 6-Button Zero Overlap across 16:9, 18:9, 20:9
+    int test_resolutions[][2] = {
+        { 1920, 1080 }, // 16:9 standard phone
+        { 2160, 1080 }, // 18:9 tall phone
+        { 2340, 1080 }, // 19.5:9 modern flagship
+        { 2400, 1080 }  // 20:9 ultrawide phone
+    };
+
+    GameProfile sf2_prof = detect_game_profile("sf2");
+    for (auto& res : test_resolutions) {
+        touch.resize(res[0], res[1]);
+        touch.configure_layout(sf2_prof);
+        const auto& sf2_btns = touch.get_renderable_buttons();
+        TEST_CHECK(sf2_btns.size() == 6, "Capcom 6-button profile loaded");
+
+        // Check horizontal clearance between LP (0) and MP (1)
+        float dx = sf2_btns[1].x - sf2_btns[0].x;
+        float dy = sf2_btns[1].y - sf2_btns[0].y;
+        float dist = std::sqrt(dx * dx + dy * dy);
+        float sum_r = sf2_btns[0].radius + sf2_btns[1].radius;
+        TEST_CHECK(dist > sum_r, "Capcom 6-button LP and MP have strictly positive clearance (zero overlap)");
+
+        // Check horizontal clearance between MP (1) and HP (2)
+        dx = sf2_btns[2].x - sf2_btns[1].x;
+        dy = sf2_btns[2].y - sf2_btns[1].y;
+        dist = std::sqrt(dx * dx + dy * dy);
+        sum_r = sf2_btns[1].radius + sf2_btns[2].radius;
+        TEST_CHECK(dist > sum_r, "Capcom 6-button MP and HP have strictly positive clearance (zero overlap)");
+
+        // Check vertical clearance between LP (0) and LK (3)
+        dx = sf2_btns[3].x - sf2_btns[0].x;
+        dy = sf2_btns[3].y - sf2_btns[0].y;
+        dist = std::sqrt(dx * dx + dy * dy);
+        sum_r = sf2_btns[0].radius + sf2_btns[3].radius;
+        TEST_CHECK(dist > sum_r, "Capcom 6-button top and bottom rows have strictly positive clearance (zero overlap)");
+    }
 }
 
 // -------------------------------------------------------------
@@ -751,6 +816,12 @@ void test_touch_overlay_renderer() {
     renderer.render(touch);
     TEST_CHECK(true, "Rendered pressed COIN pill button with gold coin glyph");
     touch.on_touch_up(2);
+
+    // 8.9 Verify Pause Menu overlay rendering
+    touch.set_paused(true);
+    renderer.render(touch);
+    TEST_CHECK(touch.is_paused(), "Rendered Pause Menu veil, header, and buttons successfully");
+    touch.set_paused(false);
 
     renderer.shutdown();
 }

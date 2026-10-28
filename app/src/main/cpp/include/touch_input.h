@@ -55,6 +55,20 @@ struct RenderableDpad {
     uint16_t active_directions; // Bitmask of UP, DOWN, LEFT, RIGHT
 };
 
+enum class PauseAction {
+    NONE,
+    RESUME,
+    RESTART,
+    QUIT
+};
+
+struct PauseButton {
+    std::string label;
+    PauseAction action;
+    float x, y, width, height;
+    bool pressed = false;
+};
+
 class TouchInput {
 public:
     TouchInput();
@@ -83,6 +97,12 @@ public:
 
     // Menu trigger flag (toggled by MENU topbar button)
     bool check_and_clear_menu_trigger();
+
+    // Pause system
+    void set_paused(bool paused);
+    bool is_paused() const { return is_paused_; }
+    PauseAction check_and_clear_pause_action();
+    const std::vector<PauseButton>& get_renderable_pause_buttons() const { return pause_buttons_; }
 
     // Data getters for overlay rendering
     RenderableDpad get_renderable_dpad() const;
@@ -127,6 +147,11 @@ private:
     // JIT Joypad bitmask
     uint16_t joypad_bitmask_ = 0;
     bool menu_triggered_ = false;
+
+    // Pause system
+    bool is_paused_ = false;
+    std::vector<PauseButton> pause_buttons_;
+    PauseAction pending_pause_action_ = PauseAction::NONE;
 };
 
 } // namespace arcade

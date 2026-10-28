@@ -35,6 +35,7 @@ struct EngineContext {
     bool has_focus = false;
     bool is_initialized = false;
     bool reset_pacing = true;
+    bool is_paused = false;
 
     arcade::TouchInput touch_input;
     arcade::AudioEngine audio_engine;
@@ -392,7 +393,21 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
     if (!engine) return 0;
 
     int32_t event_type = AInputEvent_getType(event);
-    if (event_type == AINPUT_EVENT_TYPE_MOTION) {
+    if (event_type == AINPUT_EVENT_TYPE_KEY) {
+        int32_t key_code = AKeyEvent_getKeyCode(event);
+        int32_t key_action = AKeyEvent_getAction(event);
+        if (key_code == AKEYCODE_BACK && key_action == AKEY_EVENT_ACTION_UP) {
+            if (!engine->is_paused) {
+                engine->is_paused = true;
+                engine->touch_input.set_paused(true);
+                engine->audio_engine.stop();
+                engine->reset_pacing = true;
+            } else {
+                return_to_launcher(engine->app);
+            }
+            return 1;
+        }
+    } else if (event_type == AINPUT_EVENT_TYPE_MOTION) {
         int32_t action = AMotionEvent_getAction(event);
         int32_t action_masked = action & AMOTION_EVENT_ACTION_MASK;
         int32_t pointer_index = (action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
@@ -462,12 +477,14 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
 
         case APP_CMD_PAUSE:
             engine->has_focus = false;
+            engine->is_paused = true;
+            engine->touch_input.set_paused(true);
             engine->audio_engine.stop();
             engine->reset_pacing = true;
             break;
 
         case APP_CMD_RESUME:
-            if (engine->core_host.is_game_loaded() && !engine->audio_engine.is_running()) {
+            if (!engine->is_paused && engine->core_host.is_game_loaded() && !engine->audio_engine.is_running()) {
                 engine->audio_engine.start(engine->audio_engine.get_sample_rate(), 2);
             }
             engine->reset_pacing = true;
@@ -519,10 +536,46 @@ void android_main(struct android_app* app) {
         }
 
         if (engine.is_initialized && engine.has_focus) {
-            // Check menu button - return to launcher UI
+            // 1. Check Menu button: toggle Pause Menu
             if (engine.touch_input.check_and_clear_menu_trigger()) {
-                LOGI("Menu button pressed -> Returning to launcher");
-                return_to_launcher(engine.app);
+                engine.is_paused = !engine.is_paused;
+                engine.touch_input.set_paused(engine.is_paused);
+                if (engine.is_paused) {
+                    LOGI("Menu button pressed -> Pausing game");
+                    engine.audio_engine.stop();
+                } else {
+                    LOGI("Menu button pressed -> Resuming game");
+                    if (engine.core_host.is_game_loaded() && !engine.audio_engine.is_running()) {
+                        engine.audio_engine.start(engine.audio_engine.get_sample_rate(), 2);
+                    }
+                    engine.reset_pacing = true;
+                }
+            }
+
+            // 2. Check interactive Pause Menu actions
+            if (engine.is_paused) {
+                arcade::PauseAction action = engine.touch_input.check_and_clear_pause_action();
+                if (action == arcade::PauseAction::RESUME) {
+                    LOGI("Pause Menu: RESUME selected");
+                    engine.is_paused = false;
+                    engine.touch_input.set_paused(false);
+                    if (engine.core_host.is_game_loaded() && !engine.audio_engine.is_running()) {
+                        engine.audio_engine.start(engine.audio_engine.get_sample_rate(), 2);
+                    }
+                    engine.reset_pacing = true;
+                } else if (action == arcade::PauseAction::RESTART) {
+                    LOGI("Pause Menu: RESTART selected");
+                    engine.core_host.reset();
+                    engine.is_paused = false;
+                    engine.touch_input.set_paused(false);
+                    if (engine.core_host.is_game_loaded() && !engine.audio_engine.is_running()) {
+                        engine.audio_engine.start(engine.audio_engine.get_sample_rate(), 2);
+                    }
+                    engine.reset_pacing = true;
+                } else if (action == arcade::PauseAction::QUIT) {
+                    LOGI("Pause Menu: QUIT selected -> Returning to launcher");
+                    return_to_launcher(engine.app);
+                }
             }
 
             // Obtain target FPS from engine.core_host.get_system_av_info().timing.fps (default to 60.0 if <= 0)
@@ -539,12 +592,12 @@ void android_main(struct android_app* app) {
                 engine.reset_pacing = false;
             }
 
-            // Step Libretro core with 1-frame RunAhead rollback
-            if (engine.core_host.is_game_loaded()) {
+            // Step Libretro core with 1-frame RunAhead rollback only when not paused
+            if (!engine.is_paused && engine.core_host.is_game_loaded()) {
                 engine.core_host.step_frame();
             }
 
-            // Render game frame and virtual controller overlay
+            // Render game frame and virtual controller or pause overlay
             engine.renderer.render(engine.touch_input);
 
             // Present to display

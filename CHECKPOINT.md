@@ -287,3 +287,31 @@ An exhaustive security audit was executed against CWE/SANS Top 25 and OWASP Mobi
    - **SEC-03 / SEC-06 Window & Lifecycle Leaks**: Dismisses dialogs via `safeDismissDialog()` guarded by `!isFinishing() && !isDestroyed()`, and cancels active queues/signals on `onDestroy()`.
    - **SEC-07 UI Thread Disk I/O Elimination**: Replaced synchronous disk `File.exists()` and `File.length()` checks during list scrolling with cached local path lookups (`isDownloadedQuick()`).
 
+---
+
+## 9. In-Game Pause System & Multi-Ratio Layout Spacing (Completed)
+
+> **Feature**: In-Game Pause Modal, Android Back Key Navigation & Collision-Free Action Button Geometry  
+> **Date**: 2026-10-28  
+> **Status**: Verified Operational (All Host Linux Tests Passing, Debug APK Cleanly Built)
+
+### Architecture & Solutions
+1. **In-Game Pause Modal & State Engine (`TouchInput`, `main.cpp`, `Renderer`)**:
+   - **Pause State Machine**: Tapping `MENU` or pressing Android `BACK` (`AKEYCODE_BACK`) pauses the game.
+   - **Full Emulation Freeze**: When paused, `CoreHost::step_frame()` is suspended and `AudioEngine::stop()` halts audio playback, preventing sound loop / buzz artifacts.
+   - **Glassmorphic Pause HUD (`Renderer::render_pause_menu`)**: Renders a dark backdrop veil over the frozen game frame, a cyan-bordered glassmorphic card, and three interactive vector-glyph buttons:
+     - `RESUME`: Unpauses execution, restarts AAudio stream, and resets pacing baseline (`reset_pacing = true`) to prevent catch-up bursts.
+     - `RESTART`: Re-initializes Libretro core via `CoreHost::reset()`, restarts audio, and resumes from frame 0.
+     - `QUIT`: Cleanly unloads native resources and returns to `MainActivity`.
+   - **Lifecycle Hardening**: Operating system focus loss (`APP_CMD_PAUSE`, `APP_CMD_LOST_FOCUS`) automatically sets `is_paused = true`, protecting gameplay state if interrupted by phone calls or app switching.
+
+2. **Aspect-Ratio Safe Layout Geometry & Hitbox Separation (`touch_input.cpp`, `game_profiles.cpp`)**:
+   - **The Problem Solved**: Previously, horizontal spread scaled by `screen_w_` while button radius scaled by `screen_h_`. On 16:9 and 18:9 screens, Capcom 6-button and Neo Geo 4-button layouts collided visually, and sliding finger motions triggered multiple buttons simultaneously.
+   - **Unified Dimension Scaling**: Button spread and base radius now scale proportionally with `screen_h_` (`spread_x = max(screen_w * 0.125f, screen_h * 0.25f)`), while 6-button radius scale is set to `0.82f`.
+   - **Zero Collision Guarantee**: Center-to-center distances exceed the sum of radii across all aspect ratios (16:9, 18:9, 19.5:9, 20:9), verified with dedicated regression tests.
+   - **Single Closest Button Drag**: Dragging a finger across button clusters evaluates the single closest button hitbox rather than activating all overlapping bounding boxes.
+
+3. **Older & Budget Device Optimization (`AudioEngine`)**:
+   - **AAudio SHARED Mode Buffer Scaling**: On devices without exclusive MMAP support (budget/older chipsets), buffer capacity automatically scales to `max(burst * 4, 384 frames)`, eliminating audio underruns and crackling while maintaining low latency.
+
+

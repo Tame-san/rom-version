@@ -932,6 +932,80 @@ void Renderer::render_splash_screen() {
 #endif
 }
 
+void Renderer::render_pause_menu(const TouchInput& touch_input) {
+#ifdef __ANDROID__
+    glViewport(0, 0, screen_w_, screen_h_);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glUseProgram(overlay_program_);
+    glBindVertexArray(overlay_vao_);
+
+    float left = 0.0f, right = (float)screen_w_;
+    float bottom = (float)screen_h_, top = 0.0f;
+    float near = -1.0f, far = 1.0f;
+
+    float proj[16] = {
+        2.0f / (right - left), 0.0f, 0.0f, 0.0f,
+        0.0f, 2.0f / (top - bottom), 0.0f, 0.0f,
+        0.0f, 0.0f, -2.0f / (far - near), 0.0f,
+        -(right + left) / (right - left), -(top + bottom) / (top - bottom), -(far + near) / (far - near), 1.0f
+    };
+    glUniformMatrix4fv(u_overlay_proj_loc_, 1, GL_FALSE, proj);
+
+    // 1. Dark semi-transparent backdrop veil over gameplay
+    draw_rect(0, 0, screen_w_, screen_h_, 0x080A12EE, 0.75f);
+
+    // 2. Glassmorphic Pause Card
+    float card_w = std::min(screen_w_ * 0.44f, screen_h_ * 0.78f);
+    float card_h = screen_h_ * 0.48f;
+    float card_x = (screen_w_ - card_w) * 0.5f;
+    float card_y = (screen_h_ - card_h) * 0.5f;
+
+    // Card outer neon cyan border
+    draw_rect(card_x - 2.0f, card_y - 2.0f, card_w + 4.0f, card_h + 4.0f, 0x00E5FFCC, 0.65f);
+    // Dark card body
+    draw_rect(card_x, card_y, card_w, card_h, 0x141628EE, 0.94f);
+    // Card header bar
+    draw_rect(card_x, card_y, card_w, card_h * 0.22f, 0x00E5FF44, 0.80f);
+
+    // Header "PAUSED" text with pause bars
+    float header_cy = card_y + card_h * 0.11f;
+    draw_vector_text("PAUSED", card_x + card_w * 0.5f, header_cy, card_h * 0.11f, 3.0f, 0x00E5FFFF, 1.0f);
+
+    // 3. Render the 3 interactive pause buttons
+    const auto& pause_btns = touch_input.get_renderable_pause_buttons();
+    for (const auto& pb : pause_btns) {
+        float btn_alpha = pb.pressed ? 0.90f : 0.45f;
+        uint32_t tint_color = 0x33CC33EE; // Default green for RESUME
+        if (pb.action == PauseAction::RESTART) {
+            tint_color = 0xEECC22EE; // Yellow for RESTART
+        } else if (pb.action == PauseAction::QUIT) {
+            tint_color = 0xEE3333EE; // Red for QUIT
+        }
+
+        // Button background
+        draw_rect(pb.x, pb.y, pb.width, pb.height, tint_color, btn_alpha);
+        // Button border
+        draw_line(pb.x, pb.y, pb.x + pb.width, pb.y, 2.0f, 0xFFFFFFFF, 0.75f);
+        draw_line(pb.x + pb.width, pb.y, pb.x + pb.width, pb.y + pb.height, 2.0f, 0xFFFFFFFF, 0.75f);
+        draw_line(pb.x + pb.width, pb.y + pb.height, pb.x, pb.y + pb.height, 2.0f, 0xFFFFFFFF, 0.75f);
+        draw_line(pb.x, pb.y + pb.height, pb.x, pb.y, 2.0f, 0xFFFFFFFF, 0.75f);
+
+        // Button text
+        float text_y = pb.y + pb.height * 0.5f;
+        float text_x = pb.x + pb.width * 0.5f;
+        draw_vector_text(pb.label, text_x, text_y, pb.height * 0.42f, 2.5f, 0xFFFFFFFF, 1.0f);
+    }
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+    glDisable(GL_BLEND);
+#else
+    (void)touch_input;
+#endif
+}
+
 void Renderer::render(const TouchInput& touch_input) {
 #ifdef __ANDROID__
     // Clear letterbox / pillarbox background to deep arcade black
@@ -945,8 +1019,12 @@ void Renderer::render(const TouchInput& touch_input) {
         render_splash_screen();
     }
 
-    // 2. Render virtual arcade touch overlay
-    render_touch_overlay(touch_input);
+    // 2. Render virtual arcade touch overlay or pause menu
+    if (touch_input.is_paused()) {
+        render_pause_menu(touch_input);
+    } else {
+        render_touch_overlay(touch_input);
+    }
 #else
     (void)touch_input;
 #endif
