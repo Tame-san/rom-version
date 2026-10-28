@@ -18,6 +18,8 @@ Roms
 build/
 app/build/
 app-arcade/build/
+app-handheld/build/
+app-n64/build/
 core-native/build/
 core-ui/build/
 .cxx/
@@ -28,6 +30,8 @@ local.properties
 # Native libraries in jniLibs
 app/src/main/jniLibs/**/*.so
 app-arcade/src/main/jniLibs/**/*.so
+app-handheld/src/main/jniLibs/**/*.so
+app-n64/src/main/jniLibs/**/*.so
 
 # Test binaries
 tests/test_engine
