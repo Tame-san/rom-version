@@ -147,18 +147,7 @@ static float get_intent_float_extra(struct android_app* app, const char* extra_n
                         const char* str = env->GetStringUTFChars(val, nullptr);
                         if (str) {
                             std::string s(str);
-                            if (s == "4:3" || s == "4/3") result = 4.0f / 3.0f;
-                            else if (s == "16:9" || s == "16/9") result = 16.0f / 9.0f;
-                            else if (s == "3:4" || s == "3/4") result = 3.0f / 4.0f;
-                            else if (s == "10:9" || s == "10/9") result = 10.0f / 9.0f;
-                            else if (s == "3:2" || s == "3/2") result = 3.0f / 2.0f;
-                            else if (s == "8:7" || s == "8/7") result = 8.0f / 7.0f;
-                            else {
-                                try {
-                                    float parsed = std::stof(s);
-                                    if (parsed > 0.0f) result = parsed;
-                                } catch (...) {}
-                            }
+                            result = arcade::parse_aspect_ratio(s, default_val);
                             env->ReleaseStringUTFChars(val, str);
                         }
                         env->DeleteLocalRef(val);

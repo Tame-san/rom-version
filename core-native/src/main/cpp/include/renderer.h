@@ -37,6 +37,9 @@ struct ViewportRect {
 // Calculates optimal 4:3 (or custom) pillarbox/letterbox viewport for modern ultrawide screens
 ViewportRect calculate_arcade_viewport(int screen_w, int screen_h, float aspect_ratio = 4.0f / 3.0f);
 
+// Parses aspect ratio string (e.g. "4:3", "10:9", "3:2", "16:9", "3:4", "8:7", "1.5")
+float parse_aspect_ratio(const std::string& str, float default_val = 4.0f / 3.0f);
+
 class Renderer {
 public:
     Renderer();

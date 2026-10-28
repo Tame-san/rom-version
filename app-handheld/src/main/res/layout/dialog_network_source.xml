@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/surface_card"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="NETWORK ROM SOURCE"
+        android:textColor="@color/text_primary"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.04" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Enter local IPv4 address (e.g. 192.168.1.100:8000), dedicated HTTPS URL, or direct ROM link (.gb, .gbc, .gba, .zip)."
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="14dp" />
+
+    <EditText
+        android:id="@+id/et_server_url"
+        android:layout_width="match_parent"
+        android:layout_height="42dp"
+        android:background="@drawable/bg_search_input"
+        android:hint="http://192.168.1.100:8000"
+        android:textColorHint="@color/text_secondary"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"
+        android:singleLine="true"
+        android:inputType="textUri"
+        android:paddingHorizontal="12dp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:id="@+id/tv_recent_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RECENT SERVERS:"
+        android:textColor="@color/text_secondary"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.06"
+        android:layout_marginBottom="6dp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/layout_recent_servers"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="14dp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end">
+
+        <Button
+            android:id="@+id/btn_dialog_disconnect"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:text="DISCONNECT"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:paddingHorizontal="10dp"
+            android:layout_marginEnd="6dp"
+            android:layout_marginRight="6dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btn_dialog_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:text="CANCEL"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:paddingHorizontal="10dp"
+            android:layout_marginEnd="6dp"
+            android:layout_marginRight="6dp" />
+
+        <Button
+            android:id="@+id/btn_dialog_direct"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:text="DIRECT ROM"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="10dp"
+            android:layout_marginEnd="6dp"
+            android:layout_marginRight="6dp" />
+
+        <Button
+            android:id="@+id/btn_dialog_scan"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:text="SCAN SERVER"
+            android:background="@drawable/bg_btn_primary"
+            android:textColor="@color/text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="12dp" />
+    </LinearLayout>
+
+</LinearLayout>

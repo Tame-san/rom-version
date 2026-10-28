@@ -13,7 +13,9 @@ enum class LayoutType {
     LAYOUT_NEO_4BUTTON,      // Neo Geo fighters (KOF, Garou, Last Blade, SamSho): A, B, C, D curved arch
     LAYOUT_CAPCOM_6BUTTON,   // Capcom fighters (SF2, Darkstalkers, Marvel): 3 punches top, 3 kicks bottom
     LAYOUT_BEATEMUP_2BUTTON, // Beat-em-ups (Cadillacs & Dinosaurs, Punisher): Attack, Jump (+ combo zone)
-    LAYOUT_ARCADE_4BUTTON    // Generic 4-button arcade diamond/arch fallback
+    LAYOUT_ARCADE_4BUTTON,   // Generic 4-button arcade diamond/arch fallback
+    LAYOUT_GAMEBOY,          // Game Boy / GBC 2-Button (B bottom-left, A top-right)
+    LAYOUT_GBA               // Game Boy Advance (B, A + L/R shoulder triggers)
 };
 
 enum class SystemType {
@@ -24,7 +26,10 @@ enum class SystemType {
     SYSTEM_PGM,
     SYSTEM_KONAMI,
     SYSTEM_MIDWAY,
-    SYSTEM_ARCADE_GENERIC
+    SYSTEM_ARCADE_GENERIC,
+    SYSTEM_GAMEBOY,
+    SYSTEM_GBC,
+    SYSTEM_GBA
 };
 
 // Virtual button descriptor for rendering and hit-testing
