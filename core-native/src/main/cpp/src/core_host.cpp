@@ -7,6 +7,7 @@
 
 #ifdef __ANDROID__
 #include <android/log.h>
+#include <EGL/egl.h>
 #define LOG_TAG "ArcadeCoreHost"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
@@ -15,6 +16,9 @@
 #define LOGI(...) do { printf("[ArcadeCoreHost INFO] " __VA_ARGS__); printf("\n"); } while(0)
 #define LOGW(...) do { printf("[ArcadeCoreHost WARN] " __VA_ARGS__); printf("\n"); } while(0)
 #define LOGE(...) do { fprintf(stderr, "[ArcadeCoreHost ERROR] " __VA_ARGS__); fprintf(stderr, "\n"); } while(0)
+extern "C" retro_proc_address_t eglGetProcAddress(const char* /*sym*/) {
+    return nullptr;
+}
 #endif
 
 namespace arcade {
@@ -38,7 +42,9 @@ bool CoreHost::is_safe_rom_path(const std::string& path) {
     for (char& c : ext) {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
-    return (ext == ".zip" || ext == ".7z" || ext == ".bin" || ext == ".cue" || ext == ".rom");
+    return (ext == ".zip" || ext == ".7z" || ext == ".bin" || ext == ".cue" || ext == ".rom" ||
+            ext == ".z64" || ext == ".n64" || ext == ".v64" ||
+            ext == ".gb" || ext == ".gbc" || ext == ".gba");
 }
 
 bool CoreHost::is_safe_core_path(const std::string& path) {
@@ -252,6 +258,21 @@ bool CoreHost::cb_environment(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_SET_HW_RENDER: {
+            struct retro_hw_render_callback* cb = static_cast<struct retro_hw_render_callback*>(data);
+            if (cb) {
+                cb->get_proc_address = (retro_hw_get_proc_address_t)eglGetProcAddress;
+                cb->get_current_framebuffer = [](void) -> uintptr_t { return 0; };
+                if (host) {
+                    host->hw_render_cb_ = *cb;
+                    host->is_hw_render_enabled_ = true;
+                    LOGI("CoreHost: GLES hardware rendering enabled (context type %d)", cb->context_type);
+                }
+                return true;
+            }
+            return false;
+        }
+
         default:
             break;
     }
@@ -372,6 +393,9 @@ bool CoreHost::load_core(const std::string& core_path) {
     fn_set_input_state_(cb_input_state);
 
     fn_init_();
+    if (is_hw_render_enabled_ && hw_render_cb_.context_reset) {
+        hw_render_cb_.context_reset();
+    }
 
     if (fn_get_system_info_) {
         fn_get_system_info_(&system_info_);
@@ -387,6 +411,12 @@ void CoreHost::unload_core() {
     if (game_loaded_) {
         unload_game();
     }
+
+    if (is_hw_render_enabled_ && hw_render_cb_.context_destroy) {
+        hw_render_cb_.context_destroy();
+    }
+    is_hw_render_enabled_ = false;
+    std::memset(&hw_render_cb_, 0, sizeof(hw_render_cb_));
 
     if (core_handle_) {
         if (fn_deinit_) {
@@ -463,6 +493,18 @@ void CoreHost::set_core_api_pointers(
     if (fn_set_input_state_) fn_set_input_state_(cb_input_state);
 
     if (fn_init_) fn_init_();
+    if (is_hw_render_enabled_ && hw_render_cb_.context_reset) {
+        hw_render_cb_.context_reset();
+    }
+}
+
+void CoreHost::init() {
+    if (fn_init_) {
+        fn_init_();
+    }
+    if (is_hw_render_enabled_ && hw_render_cb_.context_reset) {
+        hw_render_cb_.context_reset();
+    }
 }
 
 bool CoreHost::load_game(const std::string& rom_path) {
@@ -572,6 +614,9 @@ void CoreHost::unload_game() {
 void CoreHost::reset() {
     if (game_loaded_ && fn_reset_) {
         fn_reset_();
+    }
+    if (is_hw_render_enabled_ && hw_render_cb_.context_reset) {
+        hw_render_cb_.context_reset();
     }
 }
 

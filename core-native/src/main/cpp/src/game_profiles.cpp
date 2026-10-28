@@ -43,6 +43,7 @@ const char* system_type_to_string(SystemType system) {
         case SystemType::SYSTEM_GAMEBOY:        return "Nintendo Game Boy";
         case SystemType::SYSTEM_GBC:            return "Nintendo Game Boy Color";
         case SystemType::SYSTEM_GBA:            return "Nintendo Game Boy Advance";
+        case SystemType::SYSTEM_N64:            return "Nintendo 64";
     }
     return "Unknown System";
 }
@@ -56,6 +57,7 @@ const char* layout_type_to_string(LayoutType layout) {
         case LayoutType::LAYOUT_ARCADE_4BUTTON:    return "Arcade 4-Button";
         case LayoutType::LAYOUT_GAMEBOY:          return "Game Boy 2-Button";
         case LayoutType::LAYOUT_GBA:              return "Game Boy Advance";
+        case LayoutType::LAYOUT_N64:              return "Nintendo 64";
     }
     return "Default Layout";
 }
@@ -173,6 +175,50 @@ std::vector<VirtualButtonDesc> generate_layout_buttons(LayoutType layout) {
             buttons.push_back({
                 "A", "A", RETRO_DEVICE_ID_JOYPAD_A,
                 0.38f, -0.18f, 1.12f, 0x444488EE
+            });
+            buttons.push_back({
+                "L", "L", RETRO_DEVICE_ID_JOYPAD_L,
+                -10.0f, 0.0f, 1.05f, 0x556677EE
+            });
+            buttons.push_back({
+                "R", "R", RETRO_DEVICE_ID_JOYPAD_R,
+                -9.0f, 0.0f, 1.05f, 0x556677EE
+            });
+            break;
+        }
+
+        case LayoutType::LAYOUT_N64: {
+            // Nintendo 64 layout:
+            // A button: Blue, B button: Green
+            buttons.push_back({
+                "A", "A", RETRO_DEVICE_ID_JOYPAD_A,
+                0.52f, 0.38f, 1.15f, 0x2266FFEE
+            });
+            buttons.push_back({
+                "B", "B", RETRO_DEVICE_ID_JOYPAD_B,
+                0.15f, 0.48f, 1.05f, 0x22AA44EE
+            });
+            // 4 Yellow C-buttons (C-Up, C-Down, C-Left, C-Right)
+            buttons.push_back({
+                "C^", "U", RETRO_DEVICE_ID_JOYPAD_X,
+                0.55f, -0.42f, 0.85f, 0xEECC11EE
+            });
+            buttons.push_back({
+                "Cv", "D", RETRO_DEVICE_ID_JOYPAD_R3,
+                0.55f, 0.02f, 0.85f, 0xEECC11EE
+            });
+            buttons.push_back({
+                "C<", "L", RETRO_DEVICE_ID_JOYPAD_Y,
+                0.25f, -0.20f, 0.85f, 0xEECC11EE
+            });
+            buttons.push_back({
+                "C>", "R", RETRO_DEVICE_ID_JOYPAD_R2,
+                0.85f, -0.20f, 0.85f, 0xEECC11EE
+            });
+            // Z trigger and L/R shoulder triggers
+            buttons.push_back({
+                "Z", "Z", RETRO_DEVICE_ID_JOYPAD_L2,
+                -8.0f, 0.0f, 1.15f, 0x667788EE
             });
             buttons.push_back({
                 "L", "L", RETRO_DEVICE_ID_JOYPAD_L,
@@ -314,13 +360,21 @@ GameProfile detect_game_profile(const std::string& rom_path_or_name) {
         size_t prev_dot = lower_full.substr(0, last_dot).find_last_of('.');
         if (prev_dot != std::string::npos) {
             std::string sub_ext = lower_full.substr(prev_dot, last_dot - prev_dot);
-            if (sub_ext == ".gb" || sub_ext == ".gbc" || sub_ext == ".gba") {
+            if (sub_ext == ".gb" || sub_ext == ".gbc" || sub_ext == ".gba" ||
+                sub_ext == ".z64" || sub_ext == ".n64" || sub_ext == ".v64") {
                 ext = sub_ext;
             }
         }
     }
 
-    if (ext == ".gbc" || lower_full.find("gbc") != std::string::npos || id == "gbc") {
+    if (ext == ".z64" || ext == ".n64" || ext == ".v64" || id == "n64" || lower_full.find("n64") != std::string::npos) {
+        profile.title = "Nintendo 64 (" + id + ")";
+        profile.manufacturer = "Nintendo";
+        profile.year = 1996;
+        profile.system = SystemType::SYSTEM_N64;
+        profile.layout = LayoutType::LAYOUT_N64;
+        profile.run_ahead_frames = 0;
+    } else if (ext == ".gbc" || lower_full.find("gbc") != std::string::npos || id == "gbc") {
         profile.title = "Game Boy Color (" + id + ")";
         profile.manufacturer = "Nintendo";
         profile.year = 1998;

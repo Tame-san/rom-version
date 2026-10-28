@@ -128,6 +128,10 @@ void TouchInput::update_layout_coordinates() {
                 // R shoulder trigger
                 btn.x = screen_w_ * 0.90f;
                 btn.y = screen_h_ * 0.18f;
+            } else if (desc.rel_x == -8.0f) {
+                // Z trigger (comfortable left index/thumb placement)
+                btn.x = screen_w_ * 0.10f;
+                btn.y = screen_h_ * 0.40f;
             } else {
                 btn.x = cluster_x + desc.rel_x * spread_x;
                 btn.y = cluster_y + desc.rel_y * spread_y;
@@ -494,9 +498,21 @@ int16_t TouchInput::get_button_state(unsigned port, unsigned id) const {
 }
 
 int16_t TouchInput::get_analog_state(unsigned port, unsigned index, unsigned id) const {
-    if (port == 0 && index == RETRO_DEVICE_INDEX_ANALOG_LEFT) {
-        if (id == RETRO_DEVICE_ID_ANALOG_X) return analog_x_;
-        if (id == RETRO_DEVICE_ID_ANALOG_Y) return analog_y_;
+    if (port == 0) {
+        if (index == RETRO_DEVICE_INDEX_ANALOG_LEFT) {
+            if (id == RETRO_DEVICE_ID_ANALOG_X) return analog_x_;
+            if (id == RETRO_DEVICE_ID_ANALOG_Y) return analog_y_;
+        } else if (index == RETRO_DEVICE_INDEX_ANALOG_RIGHT) {
+            if (id == RETRO_DEVICE_ID_ANALOG_X) {
+                if (get_button_state(0, RETRO_DEVICE_ID_JOYPAD_Y)) return -32767;  // C-Left
+                if (get_button_state(0, RETRO_DEVICE_ID_JOYPAD_R2)) return 32767; // C-Right
+                return 0;
+            } else if (id == RETRO_DEVICE_ID_ANALOG_Y) {
+                if (get_button_state(0, RETRO_DEVICE_ID_JOYPAD_X)) return -32767;  // C-Up
+                if (get_button_state(0, RETRO_DEVICE_ID_JOYPAD_R3)) return 32767; // C-Down
+                return 0;
+            }
+        }
     }
     return 0;
 }

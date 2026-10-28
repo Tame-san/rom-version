@@ -947,6 +947,195 @@ void test_handheld_engine() {
                "GBA top bar button 0 is labeled 'SELECT'");
 }
 
+// -------------------------------------------------------------
+// Test Suite 10: Nintendo 64 Emulation (N64 Core & Controls)
+// -------------------------------------------------------------
+static bool s_n64_context_reset_called = false;
+static bool s_n64_context_destroy_called = false;
+
+void test_n64_engine() {
+    std::cout << "\n=== Running Test Suite 10: Nintendo 64 Emulation (N64 Core & Controls) ===" << std::endl;
+
+    // 10.1 Profile detection for extensions and system key
+    GameProfile mario = detect_game_profile("mario64.z64");
+    TEST_CHECK(mario.system == SystemType::SYSTEM_N64, "mario64.z64 detected as SYSTEM_N64");
+    TEST_CHECK(mario.layout == LayoutType::LAYOUT_N64, "mario64.z64 has LAYOUT_N64");
+    TEST_CHECK(mario.run_ahead_frames == 0, "mario64.z64 run_ahead_frames is 0 (prevents save state lag)");
+
+    GameProfile oot = detect_game_profile("zelda_oot.n64");
+    TEST_CHECK(oot.system == SystemType::SYSTEM_N64, "zelda_oot.n64 detected as SYSTEM_N64");
+    TEST_CHECK(oot.layout == LayoutType::LAYOUT_N64, "zelda_oot.n64 has LAYOUT_N64");
+    TEST_CHECK(oot.run_ahead_frames == 0, "zelda_oot.n64 run_ahead_frames is 0");
+
+    GameProfile goldeneye = detect_game_profile("goldeneye.v64");
+    TEST_CHECK(goldeneye.system == SystemType::SYSTEM_N64, "goldeneye.v64 detected as SYSTEM_N64");
+    TEST_CHECK(goldeneye.layout == LayoutType::LAYOUT_N64, "goldeneye.v64 has LAYOUT_N64");
+    TEST_CHECK(goldeneye.run_ahead_frames == 0, "goldeneye.v64 run_ahead_frames is 0");
+
+    GameProfile n64_key = detect_game_profile("n64");
+    TEST_CHECK(n64_key.system == SystemType::SYSTEM_N64, "n64 key detected as SYSTEM_N64");
+    TEST_CHECK(n64_key.layout == LayoutType::LAYOUT_N64, "n64 key has LAYOUT_N64");
+    TEST_CHECK(n64_key.run_ahead_frames == 0, "n64 key run_ahead_frames is 0");
+
+    TEST_CHECK(std::string(system_type_to_string(SystemType::SYSTEM_N64)) == "Nintendo 64",
+               "system_type_to_string returns 'Nintendo 64'");
+    TEST_CHECK(std::string(layout_type_to_string(LayoutType::LAYOUT_N64)) == "Nintendo 64",
+               "layout_type_to_string returns 'Nintendo 64'");
+
+    // 10.2 N64 layout button descriptors and coordinates (9 buttons)
+    TouchInput touch;
+    touch.resize(2400, 1080);
+    touch.configure_layout(mario);
+
+    const auto& buttons = touch.get_renderable_buttons();
+    TEST_CHECK(buttons.size() == 9, "N64 layout has exactly 9 buttons (A, B, 4 C-buttons, Z, L, R)");
+
+    // Button 0: A
+    TEST_CHECK(buttons[0].label == "A" && buttons[0].retro_id == RETRO_DEVICE_ID_JOYPAD_A,
+               "Button 0 is A (RETRO_DEVICE_ID_JOYPAD_A)");
+    TEST_CHECK(buttons[0].color_rgba == 0x2266FFEE, "A button is Blue (0x2266FFEE)");
+
+    // Button 1: B
+    TEST_CHECK(buttons[1].label == "B" && buttons[1].retro_id == RETRO_DEVICE_ID_JOYPAD_B,
+               "Button 1 is B (RETRO_DEVICE_ID_JOYPAD_B)");
+    TEST_CHECK(buttons[1].color_rgba == 0x22AA44EE, "B button is Green (0x22AA44EE)");
+
+    // Button 2: C-Up
+    TEST_CHECK(buttons[2].label == "C^" && buttons[2].retro_id == RETRO_DEVICE_ID_JOYPAD_X,
+               "Button 2 is C-Up (RETRO_DEVICE_ID_JOYPAD_X)");
+    TEST_CHECK(buttons[2].color_rgba == 0xEECC11EE, "C-Up button is Yellow (0xEECC11EE)");
+
+    // Button 3: C-Down
+    TEST_CHECK(buttons[3].label == "Cv" && buttons[3].retro_id == RETRO_DEVICE_ID_JOYPAD_R3,
+               "Button 3 is C-Down (RETRO_DEVICE_ID_JOYPAD_R3)");
+    TEST_CHECK(buttons[3].color_rgba == 0xEECC11EE, "C-Down button is Yellow (0xEECC11EE)");
+
+    // Button 4: C-Left
+    TEST_CHECK(buttons[4].label == "C<" && buttons[4].retro_id == RETRO_DEVICE_ID_JOYPAD_Y,
+               "Button 4 is C-Left (RETRO_DEVICE_ID_JOYPAD_Y)");
+    TEST_CHECK(buttons[4].color_rgba == 0xEECC11EE, "C-Left button is Yellow (0xEECC11EE)");
+
+    // Button 5: C-Right
+    TEST_CHECK(buttons[5].label == "C>" && buttons[5].retro_id == RETRO_DEVICE_ID_JOYPAD_R2,
+               "Button 5 is C-Right (RETRO_DEVICE_ID_JOYPAD_R2)");
+    TEST_CHECK(buttons[5].color_rgba == 0xEECC11EE, "C-Right button is Yellow (0xEECC11EE)");
+
+    // Button 6: Z-Trigger
+    TEST_CHECK(buttons[6].label == "Z" && buttons[6].retro_id == RETRO_DEVICE_ID_JOYPAD_L2,
+               "Button 6 is Z trigger (RETRO_DEVICE_ID_JOYPAD_L2)");
+    TEST_CHECK(buttons[6].color_rgba == 0x667788EE, "Z button is Grey (0x667788EE)");
+
+    // Button 7: L-Shoulder
+    TEST_CHECK(buttons[7].label == "L" && buttons[7].retro_id == RETRO_DEVICE_ID_JOYPAD_L,
+               "Button 7 is L shoulder (RETRO_DEVICE_ID_JOYPAD_L)");
+
+    // Button 8: R-Shoulder
+    TEST_CHECK(buttons[8].label == "R" && buttons[8].retro_id == RETRO_DEVICE_ID_JOYPAD_R,
+               "Button 8 is R shoulder (RETRO_DEVICE_ID_JOYPAD_R)");
+
+    // Coordinates check for Z, L, R
+    float expected_z_x = 2400.0f * 0.10f;
+    float expected_z_y = 1080.0f * 0.40f;
+    float expected_l_x = 2400.0f * 0.10f;
+    float expected_l_y = 1080.0f * 0.18f;
+    float expected_r_x = 2400.0f * 0.90f;
+    float expected_r_y = 1080.0f * 0.18f;
+
+    TEST_CHECK(std::abs(buttons[6].x - expected_z_x) < 0.1f, "Z trigger x coordinate is 10% of screen width");
+    TEST_CHECK(std::abs(buttons[6].y - expected_z_y) < 0.1f, "Z trigger y coordinate is 40% of screen height");
+    TEST_CHECK(std::abs(buttons[7].x - expected_l_x) < 0.1f, "L shoulder x coordinate is 10% of screen width");
+    TEST_CHECK(std::abs(buttons[7].y - expected_l_y) < 0.1f, "L shoulder y coordinate is 18% of screen height");
+    TEST_CHECK(std::abs(buttons[8].x - expected_r_x) < 0.1f, "R shoulder x coordinate is 90% of screen width");
+    TEST_CHECK(std::abs(buttons[8].y - expected_r_y) < 0.1f, "R shoulder y coordinate is 18% of screen height");
+
+    // 10.3 Right Analog stick mapping for C-buttons
+    // C-Up -> Y = -32767
+    touch.on_touch_down(1, buttons[2].x, buttons[2].y);
+    TEST_CHECK(touch.get_button_state(0, RETRO_DEVICE_ID_JOYPAD_X) == 1, "C-Up button pressed");
+    TEST_CHECK(touch.get_analog_state(0, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y) == -32767,
+               "C-Up mapped to Right Analog Y = -32767");
+    TEST_CHECK(touch.get_analog_state(0, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X) == 0,
+               "Right Analog X is 0 during C-Up");
+    touch.on_touch_up(1);
+    TEST_CHECK(touch.get_analog_state(0, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y) == 0,
+               "Right Analog Y released back to 0");
+
+    // C-Down -> Y = 32767
+    touch.on_touch_down(1, buttons[3].x, buttons[3].y);
+    TEST_CHECK(touch.get_button_state(0, RETRO_DEVICE_ID_JOYPAD_R3) == 1, "C-Down button pressed");
+    TEST_CHECK(touch.get_analog_state(0, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y) == 32767,
+               "C-Down mapped to Right Analog Y = 32767");
+    touch.on_touch_up(1);
+
+    // C-Left -> X = -32767
+    touch.on_touch_down(1, buttons[4].x, buttons[4].y);
+    TEST_CHECK(touch.get_button_state(0, RETRO_DEVICE_ID_JOYPAD_Y) == 1, "C-Left button pressed");
+    TEST_CHECK(touch.get_analog_state(0, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X) == -32767,
+               "C-Left mapped to Right Analog X = -32767");
+    touch.on_touch_up(1);
+
+    // C-Right -> X = 32767
+    touch.on_touch_down(1, buttons[5].x, buttons[5].y);
+    TEST_CHECK(touch.get_button_state(0, RETRO_DEVICE_ID_JOYPAD_R2) == 1, "C-Right button pressed");
+    TEST_CHECK(touch.get_analog_state(0, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X) == 32767,
+               "C-Right mapped to Right Analog X = 32767");
+    touch.on_touch_up(1);
+
+    // 10.4 RETRO_ENVIRONMENT_SET_HW_RENDER callback configuration
+    CoreHost host;
+    s_n64_context_reset_called = false;
+    s_n64_context_destroy_called = false;
+
+    host.set_core_api_pointers(
+        mock_retro_init,
+        mock_retro_deinit,
+        mock_retro_api_version,
+        mock_retro_get_system_info,
+        mock_retro_get_system_av_info,
+        [](retro_environment_t env_fn) {
+            struct retro_hw_render_callback cb_param{};
+            cb_param.context_type = RETRO_HW_CONTEXT_OPENGLES3;
+            cb_param.version_major = 3;
+            cb_param.version_minor = 0;
+            cb_param.context_reset = []() { s_n64_context_reset_called = true; };
+            cb_param.context_destroy = []() { s_n64_context_destroy_called = true; };
+
+            bool res = env_fn(RETRO_ENVIRONMENT_SET_HW_RENDER, &cb_param);
+            TEST_CHECK(res, "SET_HW_RENDER callback accepted by CoreHost");
+            TEST_CHECK(cb_param.get_current_framebuffer != nullptr, "get_current_framebuffer assigned");
+            TEST_CHECK(cb_param.get_current_framebuffer() == 0, "Default FBO returns 0");
+            TEST_CHECK(cb_param.get_proc_address != nullptr, "get_proc_address assigned");
+        },
+        mock_retro_set_video_refresh,
+        mock_retro_set_audio_sample,
+        mock_retro_set_audio_sample_batch,
+        mock_retro_set_input_poll,
+        mock_retro_set_input_state,
+        mock_retro_load_game,
+        mock_retro_unload_game,
+        mock_retro_run,
+        mock_retro_reset,
+        mock_retro_serialize_size,
+        mock_retro_serialize,
+        mock_retro_unserialize
+    );
+
+    TEST_CHECK(host.is_hw_render_enabled(), "Hardware render enabled in CoreHost");
+    TEST_CHECK(host.get_hw_render_callback().context_type == RETRO_HW_CONTEXT_OPENGLES3,
+               "hw_render_cb_ captured context type GLES3");
+
+    // Test context_reset invocation on host.reset()
+    s_n64_context_reset_called = false;
+    host.reset();
+    TEST_CHECK(s_n64_context_reset_called, "host.reset() invoked context_reset callback");
+
+    // Test context_destroy invocation on host.unload_core()
+    s_n64_context_destroy_called = false;
+    host.unload_core();
+    TEST_CHECK(s_n64_context_destroy_called, "host.unload_core() invoked context_destroy callback");
+    TEST_CHECK(!host.is_hw_render_enabled(), "is_hw_render_enabled reset to false after unload_core()");
+}
+
 int main() {
     std::cout << "============================================================" << std::endl;
     std::cout << "  Android Arcade Engine: Local Linux Verification Suite" << std::endl;
@@ -961,6 +1150,7 @@ int main() {
     test_frame_pacing();
     test_touch_overlay_renderer();
     test_handheld_engine();
+    test_n64_engine();
 
     std::cout << "\n============================================================" << std::endl;
     std::cout << "  ALL TESTS PASSED SUCCESSFULLY! (Exit Code 0)" << std::endl;

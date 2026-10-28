@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_main">#0F1117</color>
+    <color name="surface_card">#181A22</color>
+    <color name="surface_card_pressed">#242634</color>
+    <color name="card_border">#2A2D3C</color>
+    <color name="card_border_focus">#3D425A</color>
+    <color name="text_primary">#F1F2F6</color>
+    <color name="text_secondary">#8E92A4</color>
+    <color name="accent_primary">#F59E0B</color>
+    <color name="accent_primary_pressed">#D97706</color>
+    <color name="status_green">#34D399</color>
+
+    <!-- Platform Badge Accents: N64 3D gold/red/green accent badges -->
+    <color name="badge_n64_bg">#2A2210</color>
+    <color name="badge_n64_border">#F59E0B</color>
+    <color name="badge_n64_text">#FBBF24</color>
+
+    <color name="badge_n64_red_bg">#2B1313</color>
+    <color name="badge_n64_red_border">#DC2626</color>
+    <color name="badge_n64_red_text">#EF4444</color>
+
+    <color name="badge_n64_green_bg">#0D2A1C</color>
+    <color name="badge_n64_green_border">#059669</color>
+    <color name="badge_n64_green_text">#10B981</color>
+
+    <color name="badge_n64_blue_bg">#132238</color>
+    <color name="badge_n64_blue_border">#2563EB</color>
+    <color name="badge_n64_blue_text">#3B82F6</color>
+
+    <!-- Backward compatibility badges if needed -->
+    <color name="badge_gb_bg">#2A2210</color>
+    <color name="badge_gb_border">#F59E0B</color>
+    <color name="badge_gb_text">#FBBF24</color>
+    <color name="badge_gbc_bg">#2B1313</color>
+    <color name="badge_gbc_border">#DC2626</color>
+    <color name="badge_gbc_text">#EF4444</color>
+    <color name="badge_gba_bg">#132238</color>
+    <color name="badge_gba_border">#2563EB</color>
+    <color name="badge_gba_text">#3B82F6</color>
+    <color name="badge_handheld_bg">#1F242E</color>
+    <color name="badge_handheld_border">#64748B</color>
+    <color name="badge_handheld_text">#94A3B8</color>
+
+    <!-- Network Badge Accents -->
+    <color name="badge_net_bg">#0D2F28</color>
+    <color name="badge_net_border">#10B981</color>
+    <color name="badge_net_text">#10B981</color>
+</resources>

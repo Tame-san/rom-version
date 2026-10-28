@@ -31,6 +31,11 @@ public:
 
     // Game lifecycle controls
     void reset();
+    void init();
+
+    // Hardware rendering inspections
+    bool is_hw_render_enabled() const { return is_hw_render_enabled_; }
+    const struct retro_hw_render_callback& get_hw_render_callback() const { return hw_render_cb_; }
 
     // Savestates
     bool save_state(std::vector<uint8_t>& out_state);
@@ -140,6 +145,10 @@ private:
     bool runahead_active_ = false;
     bool mute_audio_ = false;
     bool suppress_video_ = false;
+
+    // Hardware Rendering callback state
+    bool is_hw_render_enabled_ = false;
+    struct retro_hw_render_callback hw_render_cb_{};
 
     // Libretro API entry points
     retro_init_t fn_init_ = nullptr;
