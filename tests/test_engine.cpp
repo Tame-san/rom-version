@@ -853,6 +853,100 @@ void test_touch_overlay_renderer() {
     renderer.shutdown();
 }
 
+// -------------------------------------------------------------
+// Test Suite 9: Handheld Emulation (Game Boy, GBC, GBA)
+// -------------------------------------------------------------
+void test_handheld_engine() {
+    std::cout << "\n=== Running Test Suite 9: Handheld Emulation (GB, GBC, GBA) ===" << std::endl;
+
+    // 9.1 Profile detection by extension and system keys
+    GameProfile gb = detect_game_profile("pokemon.gb");
+    TEST_CHECK(gb.system == SystemType::SYSTEM_GAMEBOY, "pokemon.gb detected as SYSTEM_GAMEBOY");
+    TEST_CHECK(gb.layout == LayoutType::LAYOUT_GAMEBOY, "pokemon.gb has LAYOUT_GAMEBOY");
+    TEST_CHECK(gb.run_ahead_frames == 1, "pokemon.gb run_ahead_frames is 1");
+
+    GameProfile gbc = detect_game_profile("zelda.gbc");
+    TEST_CHECK(gbc.system == SystemType::SYSTEM_GBC, "zelda.gbc detected as SYSTEM_GBC");
+    TEST_CHECK(gbc.layout == LayoutType::LAYOUT_GAMEBOY, "zelda.gbc has LAYOUT_GAMEBOY");
+    TEST_CHECK(gbc.run_ahead_frames == 1, "zelda.gbc run_ahead_frames is 1");
+
+    GameProfile gba = detect_game_profile("metroid.gba");
+    TEST_CHECK(gba.system == SystemType::SYSTEM_GBA, "metroid.gba detected as SYSTEM_GBA");
+    TEST_CHECK(gba.layout == LayoutType::LAYOUT_GBA, "metroid.gba has LAYOUT_GBA");
+    TEST_CHECK(gba.run_ahead_frames == 1, "metroid.gba run_ahead_frames is 1");
+
+    // System key detections
+    GameProfile sys_gb = detect_game_profile("GAMEBOY");
+    TEST_CHECK(sys_gb.system == SystemType::SYSTEM_GAMEBOY, "GAMEBOY key detected as SYSTEM_GAMEBOY");
+    GameProfile sys_gbc = detect_game_profile("GBC");
+    TEST_CHECK(sys_gbc.system == SystemType::SYSTEM_GBC, "GBC key detected as SYSTEM_GBC");
+    GameProfile sys_gba = detect_game_profile("GBA");
+    TEST_CHECK(sys_gba.system == SystemType::SYSTEM_GBA, "GBA key detected as SYSTEM_GBA");
+
+    // 9.2 Aspect ratio parsing: "10:9" -> 10.0f / 9.0f, "3:2" -> 3.0f / 2.0f
+    float ar_gb = parse_aspect_ratio("10:9");
+    TEST_CHECK(std::abs(ar_gb - (10.0f / 9.0f)) < 0.0001f, "Aspect ratio '10:9' parsed to 10.0f / 9.0f");
+    float ar_gba = parse_aspect_ratio("3:2");
+    TEST_CHECK(std::abs(ar_gba - (3.0f / 2.0f)) < 0.0001f, "Aspect ratio '3:2' parsed to 3.0f / 2.0f");
+
+    // Handheld viewports on ultrawide 2400x1080 display
+    ViewportRect vp_gb = calculate_arcade_viewport(2400, 1080, ar_gb);
+    TEST_CHECK(vp_gb.height == 1080, "Game Boy uses full screen height (1080)");
+    TEST_CHECK(vp_gb.width == 1200, "10:9 aspect ratio yields 1200px width on 1080p display");
+    TEST_CHECK(vp_gb.x == 600, "Pillarbox left/right black bar width is 600px");
+
+    ViewportRect vp_gba = calculate_arcade_viewport(2400, 1080, ar_gba);
+    TEST_CHECK(vp_gba.height == 1080, "GBA uses full screen height (1080)");
+    TEST_CHECK(vp_gba.width == 1620, "3:2 aspect ratio yields 1620px width on 1080p display");
+    TEST_CHECK(vp_gba.x == 390, "GBA pillarbox left/right bar width is 390px");
+
+    // 9.3 Handheld layout buttons (button counts, ids, shoulder coordinates)
+    TouchInput touch;
+    touch.resize(2400, 1080);
+
+    // Verify Game Boy layout
+    touch.configure_layout(gb);
+    const auto& gb_buttons = touch.get_renderable_buttons();
+    TEST_CHECK(gb_buttons.size() == 2, "Game Boy layout has exactly 2 buttons");
+    TEST_CHECK(gb_buttons[0].label == "B" && gb_buttons[0].retro_id == RETRO_DEVICE_ID_JOYPAD_B,
+               "GB button 0 is B (RETRO_DEVICE_ID_JOYPAD_B)");
+    TEST_CHECK(gb_buttons[1].label == "A" && gb_buttons[1].retro_id == RETRO_DEVICE_ID_JOYPAD_A,
+               "GB button 1 is A (RETRO_DEVICE_ID_JOYPAD_A)");
+    // Top bar for Game Boy: button 0 is "SELECT"
+    const auto& gb_topbar = touch.get_renderable_topbar();
+    TEST_CHECK(!gb_topbar.empty() && gb_topbar[0].label == "SELECT",
+               "Game Boy top bar button 0 is labeled 'SELECT'");
+
+    // Verify GBA layout
+    touch.configure_layout(gba);
+    const auto& gba_buttons = touch.get_renderable_buttons();
+    TEST_CHECK(gba_buttons.size() == 4, "GBA layout has exactly 4 buttons (B, A, L, R)");
+    TEST_CHECK(gba_buttons[0].label == "B" && gba_buttons[0].retro_id == RETRO_DEVICE_ID_JOYPAD_B,
+               "GBA button 0 is B");
+    TEST_CHECK(gba_buttons[1].label == "A" && gba_buttons[1].retro_id == RETRO_DEVICE_ID_JOYPAD_A,
+               "GBA button 1 is A");
+    TEST_CHECK(gba_buttons[2].label == "L" && gba_buttons[2].retro_id == RETRO_DEVICE_ID_JOYPAD_L,
+               "GBA button 2 is L shoulder");
+    TEST_CHECK(gba_buttons[3].label == "R" && gba_buttons[3].retro_id == RETRO_DEVICE_ID_JOYPAD_R,
+               "GBA button 3 is R shoulder");
+
+    // Verify GBA shoulder button positioning
+    // L shoulder at 10% width, 18% height; R shoulder at 90% width, 18% height
+    float expected_l_x = 2400.0f * 0.10f;
+    float expected_l_y = 1080.0f * 0.18f;
+    float expected_r_x = 2400.0f * 0.90f;
+    float expected_r_y = 1080.0f * 0.18f;
+    TEST_CHECK(std::abs(gba_buttons[2].x - expected_l_x) < 0.1f, "L shoulder x coordinate is 10% of screen width");
+    TEST_CHECK(std::abs(gba_buttons[2].y - expected_l_y) < 0.1f, "L shoulder y coordinate is 18% of screen height");
+    TEST_CHECK(std::abs(gba_buttons[3].x - expected_r_x) < 0.1f, "R shoulder x coordinate is 90% of screen width");
+    TEST_CHECK(std::abs(gba_buttons[3].y - expected_r_y) < 0.1f, "R shoulder y coordinate is 18% of screen height");
+
+    // Top bar for GBA: button 0 is "SELECT"
+    const auto& gba_topbar = touch.get_renderable_topbar();
+    TEST_CHECK(!gba_topbar.empty() && gba_topbar[0].label == "SELECT",
+               "GBA top bar button 0 is labeled 'SELECT'");
+}
+
 int main() {
     std::cout << "============================================================" << std::endl;
     std::cout << "  Android Arcade Engine: Local Linux Verification Suite" << std::endl;
@@ -866,6 +960,7 @@ int main() {
     test_security_hardening();
     test_frame_pacing();
     test_touch_overlay_renderer();
+    test_handheld_engine();
 
     std::cout << "\n============================================================" << std::endl;
     std::cout << "  ALL TESTS PASSED SUCCESSFULLY! (Exit Code 0)" << std::endl;

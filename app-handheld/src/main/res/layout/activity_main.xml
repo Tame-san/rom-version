@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_main"
+    android:padding="16dp">
+
+    <!-- Header -->
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="HANDHELD PLAYER"
+        android:textColor="@color/text_primary"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.04" />
+
+    <TextView
+        android:id="@+id/tv_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Game Boy • Color • Advance"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Status Card -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_card"
+        android:padding="12dp"
+        android:elevation="2dp"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:id="@+id/tv_core_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Cores: Gambatte (GB/GBC) • mGBA (GBA)"
+            android:textColor="@color/accent_primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_rom_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ready to load game"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp" />
+    </LinearLayout>
+
+    <!-- Action Bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+
+        <Button
+            android:id="@+id/btn_select_rom"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:text="SELECT ROM"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="6dp"
+            android:layout_marginRight="6dp"
+            android:elevation="2dp" />
+
+        <Button
+            android:id="@+id/btn_select_folder"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:text="SELECT FOLDER"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="6dp"
+            android:layout_marginRight="6dp"
+            android:elevation="2dp" />
+
+        <Button
+            android:id="@+id/btn_network_source"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:text="NETWORK"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:elevation="2dp" />
+    </LinearLayout>
+
+    <!-- Network Source Status Card -->
+    <LinearLayout
+        android:id="@+id/card_network_source"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@drawable/bg_card"
+        android:padding="10dp"
+        android:elevation="2dp"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tv_network_status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🌐 No server connected"
+            android:textColor="@color/badge_net_text"
+            android:textSize="12sp"
+            android:ellipsize="middle"
+            android:singleLine="true" />
+
+        <Button
+            android:id="@+id/btn_network_save_all"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="SAVE ALL"
+            android:background="@drawable/bg_download_cue"
+            android:textColor="@color/badge_net_text"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="10dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginLeft="6dp" />
+
+        <Button
+            android:id="@+id/btn_network_sync"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="SYNC"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="10dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginLeft="6dp" />
+
+        <Button
+            android:id="@+id/btn_network_disconnect"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="DISCONNECT"
+            android:background="@drawable/bg_btn_secondary"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:paddingHorizontal="10dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginLeft="6dp" />
+    </LinearLayout>
+
+    <!-- Section Header -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="DETECTED HANDHELD GAMES"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.08"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Filter Tabs / Chips -->
+    <LinearLayout
+        android:id="@+id/layout_filter_tabs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="10dp">
+
+        <Button
+            android:id="@+id/btn_filter_all"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="ALL (0)"
+            android:background="@drawable/bg_tab_selected"
+            android:textColor="@color/text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="4dp"
+            android:layout_marginRight="4dp" />
+
+        <Button
+            android:id="@+id/btn_filter_offline"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="OFFLINE (0)"
+            android:background="@drawable/bg_tab_unselected"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="4dp"
+            android:layout_marginRight="4dp" />
+
+        <Button
+            android:id="@+id/btn_filter_network"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="NETWORK (0)"
+            android:background="@drawable/bg_tab_unselected"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Search Input -->
+    <EditText
+        android:id="@+id/et_search"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:background="@drawable/bg_search_input"
+        android:hint="Search Game Boy / GBA games..."
+        android:textColorHint="@color/text_secondary"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"
+        android:singleLine="true"
+        android:maxLines="1"
+        android:inputType="text"
+        android:paddingHorizontal="12dp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Game List -->
+    <ListView
+        android:id="@+id/lv_games"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="8dp"
+        android:listSelector="@android:color/transparent" />
+
+</LinearLayout>

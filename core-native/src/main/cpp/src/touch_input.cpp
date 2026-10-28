@@ -39,7 +39,7 @@ void TouchInput::resize(int screen_width, int screen_height) {
 
     // COIN / CREDIT (SELECT)
     TopBarButton coin_btn;
-    coin_btn.label = "COIN";
+    coin_btn.label = (layout_ == LayoutType::LAYOUT_GAMEBOY || layout_ == LayoutType::LAYOUT_GBA) ? "SELECT" : "COIN";
     coin_btn.retro_id = RETRO_DEVICE_ID_JOYPAD_SELECT;
     coin_btn.x = screen_w_ * 0.40f - bar_btn_w * 0.5f;
     coin_btn.y = bar_y;
@@ -96,6 +96,13 @@ void TouchInput::resize(int screen_width, int screen_height) {
 void TouchInput::configure_layout(const GameProfile& profile) {
     current_profile_ = profile;
     layout_ = profile.layout;
+    if (!topbar_buttons_.empty()) {
+        if (layout_ == LayoutType::LAYOUT_GAMEBOY || layout_ == LayoutType::LAYOUT_GBA) {
+            topbar_buttons_[0].label = "SELECT";
+        } else {
+            topbar_buttons_[0].label = "COIN";
+        }
+    }
     update_layout_coordinates();
 }
 
@@ -112,8 +119,23 @@ void TouchInput::update_layout_coordinates() {
 
     for (const auto& desc : current_profile_.buttons) {
         RenderableButton btn;
-        btn.x = cluster_x + desc.rel_x * spread_x;
-        btn.y = cluster_y + desc.rel_y * spread_y;
+        if (desc.rel_x < -5.0f) {
+            if (desc.rel_x == -10.0f) {
+                // L shoulder trigger
+                btn.x = screen_w_ * 0.10f;
+                btn.y = screen_h_ * 0.18f;
+            } else if (desc.rel_x == -9.0f) {
+                // R shoulder trigger
+                btn.x = screen_w_ * 0.90f;
+                btn.y = screen_h_ * 0.18f;
+            } else {
+                btn.x = cluster_x + desc.rel_x * spread_x;
+                btn.y = cluster_y + desc.rel_y * spread_y;
+            }
+        } else {
+            btn.x = cluster_x + desc.rel_x * spread_x;
+            btn.y = cluster_y + desc.rel_y * spread_y;
+        }
         btn.radius = base_radius * desc.radius_scale;
         btn.label = desc.label;
         btn.sublabel = desc.sublabel;

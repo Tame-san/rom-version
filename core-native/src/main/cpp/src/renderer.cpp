@@ -16,6 +16,34 @@
 #endif
 
 namespace arcade {
+ 
+float parse_aspect_ratio(const std::string& str, float default_val) {
+    if (str.empty()) return default_val;
+    if (str == "4:3" || str == "4/3") return 4.0f / 3.0f;
+    if (str == "16:9" || str == "16/9") return 16.0f / 9.0f;
+    if (str == "3:4" || str == "3/4") return 3.0f / 4.0f;
+    if (str == "10:9" || str == "10/9") return 10.0f / 9.0f;
+    if (str == "3:2" || str == "3/2") return 3.0f / 2.0f;
+    if (str == "8:7" || str == "8/7") return 8.0f / 7.0f;
+
+    size_t sep = str.find_first_of(":/");
+    if (sep != std::string::npos && sep > 0 && sep + 1 < str.length()) {
+        try {
+            float num = std::stof(str.substr(0, sep));
+            float den = std::stof(str.substr(sep + 1));
+            if (num > 0.0f && den > 0.0f) {
+                return num / den;
+            }
+        } catch (...) {}
+    }
+
+    try {
+        float val = std::stof(str);
+        if (val > 0.0f) return val;
+    } catch (...) {}
+
+    return default_val;
+}
 
 ViewportRect calculate_arcade_viewport(int screen_w, int screen_h, float aspect_ratio) {
     ViewportRect vp;

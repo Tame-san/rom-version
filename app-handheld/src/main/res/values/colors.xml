@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_main">#131418</color>
+    <color name="surface_card">#1C1D24</color>
+    <color name="surface_card_pressed">#262832</color>
+    <color name="card_border">#2C2E38</color>
+    <color name="card_border_focus">#3F4352</color>
+    <color name="text_primary">#F1F2F6</color>
+    <color name="text_secondary">#8E92A4</color>
+    <color name="accent_primary">#6366F1</color>
+    <color name="accent_primary_pressed">#4F46E5</color>
+    <color name="status_green">#34D399</color>
+
+    <!-- Platform Badge Accents -->
+    <!-- Game Boy (DMG): Olive green classic DMG tones -->
+    <color name="badge_gb_bg">#232A1C</color>
+    <color name="badge_gb_border">#8BAC0F</color>
+    <color name="badge_gb_text">#9BBC0F</color>
+
+    <!-- Game Boy Color (GBC): Vibrant purple / magenta tones -->
+    <color name="badge_gbc_bg">#2D1B36</color>
+    <color name="badge_gbc_border">#C084FC</color>
+    <color name="badge_gbc_text">#C084FC</color>
+
+    <!-- Game Boy Advance (GBA): Indigo / Cobalt tones -->
+    <color name="badge_gba_bg">#1E2240</color>
+    <color name="badge_gba_border">#818CF8</color>
+    <color name="badge_gba_text">#818CF8</color>
+
+    <!-- Generic Handheld -->
+    <color name="badge_handheld_bg">#1F242E</color>
+    <color name="badge_handheld_border">#64748B</color>
+    <color name="badge_handheld_text">#94A3B8</color>
+
+    <!-- Network Badge Accents -->
+    <color name="badge_net_bg">#0D2F28</color>
+    <color name="badge_net_border">#10B981</color>
+    <color name="badge_net_text">#10B981</color>
+</resources>
