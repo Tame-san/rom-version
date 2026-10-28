@@ -15,7 +15,8 @@ enum class LayoutType {
     LAYOUT_BEATEMUP_2BUTTON, // Beat-em-ups (Cadillacs & Dinosaurs, Punisher): Attack, Jump (+ combo zone)
     LAYOUT_ARCADE_4BUTTON,   // Generic 4-button arcade diamond/arch fallback
     LAYOUT_GAMEBOY,          // Game Boy / GBC 2-Button (B bottom-left, A top-right)
-    LAYOUT_GBA               // Game Boy Advance (B, A + L/R shoulder triggers)
+    LAYOUT_GBA,              // Game Boy Advance (B, A + L/R shoulder triggers)
+    LAYOUT_N64               // Nintendo 64 (A, B, 4 C-buttons, Z-trigger, L/R shoulders)
 };
 
 enum class SystemType {
@@ -29,7 +30,8 @@ enum class SystemType {
     SYSTEM_ARCADE_GENERIC,
     SYSTEM_GAMEBOY,
     SYSTEM_GBC,
-    SYSTEM_GBA
+    SYSTEM_GBA,
+    SYSTEM_N64
 };
 
 // Virtual button descriptor for rendering and hit-testing

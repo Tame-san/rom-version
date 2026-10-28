@@ -88,6 +88,7 @@ enum retro_log_level
 #define RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS          11
 #define RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK          12
 #define RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE     13
+#define RETRO_ENVIRONMENT_SET_HW_RENDER                  14
 #define RETRO_ENVIRONMENT_GET_VARIABLE                   15
 #define RETRO_ENVIRONMENT_SET_VARIABLES                  16
 #define RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE            17
@@ -204,6 +205,39 @@ struct retro_controller_info
 {
    const struct retro_controller_description *types;
    unsigned num_types;
+};
+
+enum retro_hw_context_type
+{
+   RETRO_HW_CONTEXT_NONE             = 0,
+   RETRO_HW_CONTEXT_OPENGL           = 1,
+   RETRO_HW_CONTEXT_OPENGLES2        = 2,
+   RETRO_HW_CONTEXT_OPENGL_CORE      = 3,
+   RETRO_HW_CONTEXT_OPENGLES3        = 4,
+   RETRO_HW_CONTEXT_OPENGLES_CORE    = 5,
+   RETRO_HW_CONTEXT_VULKAN           = 6,
+   RETRO_HW_CONTEXT_DUMMY            = INT32_MAX
+};
+
+typedef void (*retro_proc_address_t)(void);
+typedef void (*retro_hw_context_reset_t)(void);
+typedef uintptr_t (*retro_hw_get_current_framebuffer_t)(void);
+typedef retro_proc_address_t (*retro_hw_get_proc_address_t)(const char *sym);
+
+struct retro_hw_render_callback
+{
+   enum retro_hw_context_type context_type;
+   retro_hw_context_reset_t context_reset;
+   retro_hw_get_current_framebuffer_t get_current_framebuffer;
+   retro_hw_get_proc_address_t get_proc_address;
+   bool depth;
+   bool stencil;
+   bool bottom_left_origin;
+   unsigned version_major;
+   unsigned version_minor;
+   bool cache_context;
+   retro_hw_context_reset_t context_destroy;
+   bool debug_context;
 };
 
 /* Libretro Callbacks */
