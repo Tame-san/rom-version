@@ -24,63 +24,69 @@ This project is a dedicated, ultra-low-latency Android arcade player designed fo
 
 ```text
 /home/the-dev/repos/rom-version
-├── CHECKPOINT.md                       # This comprehensive project handoff document
+├── CHECKPOINT.md                       # Authoritative project checkpoint & decision tracker
 ├── build.gradle.kts                    # Root Gradle build script
-├── settings.gradle.kts                 # Root Gradle settings (includes ':app')
+├── settings.gradle.kts                 # Monorepo settings (includes :core-native, :core-ui, :app-arcade, :app-handheld, :app-n64)
 ├── gradle.properties                   # JVM & AndroidX configurations
 ├── local.properties                    # SDK & NDK paths (ndk.dir=/home/the-dev/Android/Sdk/ndk/26.1.10909125)
 ├── gradlew                             # Gradle wrapper executable
-├── app/
-│   ├── build.gradle.kts                # Application module Gradle script (NDK, CMake, dependencies)
+├── exports/                            # Standalone installation-ready APK exports
+│   ├── RetroArcade-v1.0.0.apk          # 43 MB (Arcade: FBNeo + BIOSes)
+│   ├── RetroHandheld-GBA-v1.0.0.apk    # 7.9 MB (Handheld: Gambatte GB/GBC + mGBA GBA)
+│   └── RetroN64-v1.0.0.apk             # 11 MB (Nintendo 64: Mupen64Plus-Next GLES3)
+├── core-native/                        # Shared Android Library (C++17 native engine)
+│   ├── build.gradle.kts                # Native library Gradle script (NDK, CMake)
 │   └── src/main/
-│       ├── AndroidManifest.xml         # Manifest (MainActivity + ArcadeActivity NativeActivity, permissions)
-│       ├── assets/
-│       │   └── bios/                   # Bundled BIOS archives extracted automatically at startup
-│       │       ├── neogeo.zip          # Neo Geo MVS/AES BIOS with all canonical & legacy aliases
-│       │       ├── pgm.zip             # IGS PolyGame Master BIOS
-│       │       ├── qsound.zip          # Capcom QSound audio BIOS
-│       │       ├── qsound_hle.zip      # Capcom QSound HLE BIOS
-│       │       ├── coh1002m.zip        # CoH BIOS
-│       │       ├── neoromjb.zip        # Neo Geo Japanese BIOS
-│       │       └── ngem2k.zip          # Neo Geo EM2K BIOS
 │       ├── cpp/
 │       │   ├── CMakeLists.txt          # CMake configuration targeting C++17 (GLESv3, EGL, aaudio, log)
 │       │   ├── include/
-│       │   │   ├── libretro.h          # Standard Libretro API header
-│       │   │   ├── game_profiles.h     # Game database, layout configurations, and auto-detection
-│       │   │   ├── touch_input.h       # Multi-touch virtual gamepad system and JIT input polling
-│       │   │   ├── audio_engine.h      # AAudio low-latency engine & lock-free SPSC ring buffer
-│       │   │   ├── renderer.h          # OpenGL ES 3.0 renderer (4:3 pillarbox, RGB565/XRGB8888, touch overlay)
-│       │   │   └── core_host.h         # Libretro core host manager, RunAhead rollback, dynamic core loader
+│       │   │   ├── libretro.h          # Standard Libretro API + Hardware Render (RETRO_ENVIRONMENT_SET_HW_RENDER)
+│       │   │   ├── game_profiles.h     # System types, layout profiles, and button descriptors
+│       │   │   ├── touch_input.h       # Multi-touch virtual gamepad, 3D analog, C-buttons, pause state
+│       │   │   ├── audio_engine.h      # AAudio MMAP engine & SPSC lock-free ring buffer
+│       │   │   ├── renderer.h          # OpenGL ES 3.0 renderer (viewport math, vector HUD, pause veil)
+│       │   │   └── core_host.h         # Libretro core host, dlopen loader, HW render, RunAhead
 │       │   └── src/
-│       │       ├── main.cpp            # android_main NativeActivity lifecycle & non-blocking render loop
-│       │       ├── game_profiles.cpp   # Game profile definitions (Neo Geo 3/4-btn, Capcom 6-btn, Beat'em-up 2-btn)
-│       │       ├── touch_input.cpp     # Touch hit-testing, dynamic D-pad center, deadzones, action buttons
-│       │       ├── audio_engine.cpp    # AAudio stream lifecycle, MMAP setup, lock-free audio ring buffer
-│       │       ├── renderer.cpp        # GLES3 shaders, texture upload, touch button HUD geometry rendering
-│       │       └── core_host.cpp       # dlopen/dlsym for libretro_fbneo.so, retro callbacks, 1-frame RunAhead
-│       ├── java/com/arcade/engine/
-│       │   ├── MainActivity.java       # Launch activity: ROM browser, auto-scans /sdcard/Download/Roms, BIOS check
-│       │   ├── ArcadeActivity.java     # Subclass of android.app.NativeActivity with error dialog fallback
-│       │   └── RomNormalizer.java      # Dynamic on-the-fly zip inspector/normalizer injecting FBNeo canonical aliases
-│       ├── jniLibs/
-│       │   ├── arm64-v8a/
-│       │   │   └── libretro_fbneo.so   # Pre-compiled FinalBurn Neo arcade core (64-bit ARM)
-│       │   └── armeabi-v7a/
-│       │       └── libretro_fbneo.so   # Pre-compiled FinalBurn Neo arcade core (32-bit ARM)
-│       └── res/
-│           ├── layout/
-│           │   └── activity_main.xml   # Modern dark-themed Material ROM launcher UI
-│           └── values/
-│               ├── strings.xml         # String resources
-│               └── themes.xml          # Fullscreen immersive sticky themes
-├── mame/
-│   ├── bios/                           # Reference master arcade BIOS archives
-│   └── roms/                           # Reference master arcade ROMs (50+ titles)
-├── tests/
-│   ├── Makefile                        # Linux host test compilation (g++ -std=c++17)
-│   ├── test_engine.cpp                 # 6 test suites verifying profiles, touch, math, audio, RunAhead, security
-│   └── test_engine                     # Compiled Linux host test binary
+│       │       ├── main.cpp            # NativeActivity lifecycle, Intent extra dispatcher, monotonic render loop
+│       │       ├── game_profiles.cpp   # Profile definitions (Neo 3/4-btn, Capcom 6-btn, DMG, GBA, N64)
+│       │       ├── touch_input.cpp     # Floating D-pad/stick, hit-testing, Right Analog C-stick mapping
+│       │       ├── audio_engine.cpp    # AAudio lifecycle & buffer capacity scaling for budget chips
+│       │       ├── renderer.cpp        # Shaders, aspect ratios (4:3, 10:9, 3:2), vector glyph font
+│       │       └── core_host.cpp       # Libretro callbacks, HW render interface, state serialization
+│       └── java/com/arcade/engine/
+│           └── RetroActivity.java      # Reusable NativeActivity base host with fatal error dialog dispatch
+├── core-ui/                            # Shared Android Library (Java UI services & background tasks)
+│   ├── build.gradle.kts                # Core UI Gradle script
+│   └── src/main/java/com/arcade/engine/
+│       ├── GameItem.java               # Unified ROM catalog data model
+│       ├── NetworkRomSource.java       # HTTP ROM streaming, catalog sync, and download worker
+│       └── OfflineDownloadManager.java # Background batch download queue and storage management
+├── app-arcade/                         # Standalone Application APK: Retro Arcade
+│   ├── build.gradle.kts                # Depends on :core-native, :core-ui
+│   └── src/main/
+│       ├── AndroidManifest.xml         # MainActivity + ArcadeActivity NativeActivity host
+│       ├── assets/bios/                # Bundled arcade BIOS archives (neogeo, pgm, qsound)
+│       ├── java/com/arcade/engine/     # MainActivity (ROM browser) & RomNormalizer (MAME zip aliaser)
+│       ├── jniLibs/                    # Bundled libretro_fbneo.so (arm64-v8a, armeabi-v7a)
+│       └── res/                        # Material dark theme, layout, and UI drawables
+├── app-handheld/                       # Standalone Application APK: Retro Handheld (GB, GBC, GBA)
+│   ├── build.gradle.kts                # Depends on :core-native, :core-ui
+│   └── src/main/
+│       ├── AndroidManifest.xml         # MainActivity + HandheldActivity NativeActivity host
+│       ├── java/com/retro/handheld/    # MainActivity (cartridge browser for .gb, .gbc, .gba, .zip)
+│       ├── jniLibs/                    # Bundled libretro_gambatte.so & libretro_mgba.so
+│       └── res/                        # DMG olive, GBC purple, GBA indigo UI accents
+├── app-n64/                            # Standalone Application APK: Retro N64
+│   ├── build.gradle.kts                # Depends on :core-native, :core-ui
+│   └── src/main/
+│       ├── AndroidManifest.xml         # MainActivity + N64Activity NativeActivity host
+│       ├── java/com/retro/n64/         # MainActivity (.z64, .n64, .v64 ROM browser)
+│       ├── jniLibs/                    # Bundled libretro_mupen64plus_next.so (GLES3 3D core)
+│       └── res/                        # N64 3D gold/red/green accent themes
+├── mame/                               # Reference arcade BIOSes and ROMs
+├── tests/                              # Linux Host Unit Tests (10 test suites, 278 assertions)
+│   ├── Makefile                        # g++ -std=c++17 test compilation
+│   └── test_engine.cpp                 # Comprehensive C++ verification suite
 └── worktrees/                          # Isolated git worktrees for subagents
 ```
 
@@ -139,6 +145,25 @@ This project is a dedicated, ultra-low-latency Android arcade player designed fo
 - **Root Problem Solved**: Merged MAME ROMs like `kof97.zip` contain hundreds of bootlegs in subdirectories (`kof97s72/`, `kogd/`), ballooning archive size to 874MB. Decompressing and recompressing 874MB on flash storage took 45+ seconds and stalled the UI, while `standard` launch mode caused multi-instance race conditions in FBNeo.
 - **Decision**: `RomNormalizer.java` filters out subdirectories (`entry.isDirectory() || name.contains("/") || name.contains("\\")`), copying only the 13 canonical root MAME files (~35MB total). Normalization completes in $< 1$ second.
 - **Decision**: Configured `ArcadeActivity` with `android:launchMode="singleTask"` to prevent concurrent activity instances from corrupting global core state.
+
+### K. Modular Monorepo Architecture (`:core-native`, `:core-ui`, `:app-*`)
+- **Root Problem Solved**: Adding Handheld (Game Boy/GBA) and Nintendo 64 emulation into a single monolithic APK bloats installation size to 70+ MB, bundles unnecessary BIOSes/assets to users who only want one system, and creates namespace/configuration collisions across divergent control paradigms.
+- **Decision**: Architected as a modular monorepo:
+  - `:core-native`: Shared C++17 library containing AAudio low-latency engine, OpenGL ES 3.0 renderer, multi-touch virtual gamepad, and Libretro core host.
+  - `:core-ui`: Shared Java library containing unified `GameItem` data models, LAN streaming sync, and offline batch queue manager.
+  - `:app-arcade`, `:app-handheld`, `:app-n64`: Lightweight, system-targeted standalone APKs bundling only the relevant Libretro cores and platform assets.
+
+### L. Multi-Ratio Button Spacing & Collision-Free Hitbox Geometry (`touch_input.cpp`)
+- **Root Problem Solved**: Button clusters previously scaled horizontally with `screen_w_` while radius scaled with `screen_h_`. On 16:9 and 18:9 screens, Capcom 6-button and Neo Geo 4-button layouts collided visually, and sliding finger motions triggered multiple adjacent buttons.
+- **Decision**: Standardized button spread and radius to scale strictly with `screen_h_` (`spread_x = max(screen_w * 0.125f, screen_h * 0.25f)`), reduced 6-button radius scale to `0.82f`, and enforced single-closest button hitbox resolution during finger drag gestures.
+
+### M. In-Game Pause Modal & Audio Loop Elimination (`TouchInput`, `main.cpp`, `AudioEngine`)
+- **Root Problem Solved**: Previously, games could not be paused in-flight without leaving the app. Suspending the render loop without stopping the native audio stream caused AAudio buffer recycling to loop the last 10ms of audio, creating an abrasive buzzing sound.
+- **Decision**: Built an in-engine pause state machine triggered via UI button or Android hardware `BACK` key (`AKEYCODE_BACK`). When paused, `CoreHost::step_frame()` is suspended and `AudioEngine::stop()` halts playback immediately. Resuming unpauses audio and resets monotonic pacing baseline to prevent catch-up frame bursts.
+
+### N. 2D Frame Blitting vs 3D Libretro Hardware Rendering & RunAhead Strategy (`core_host.cpp`)
+- **Root Problem Solved**: 2D arcade and handheld cores blit pixel buffers into textures (`glTexSubImage2D`) and can execute 1-frame RunAhead rollback (<3MB save states). In contrast, Nintendo 64 (Mupen64Plus-Next) requires direct OpenGL ES 3.0 hardware rendering and creates 8–32MB save states; running RunAhead on N64 creates severe frame drops and audio crackling.
+- **Decision**: Implemented `RETRO_ENVIRONMENT_SET_HW_RENDER` callback in `CoreHost` to share the GLES3 context and FBO with the 3D core, eliminating CPU pixel copying. Specifically set `run_ahead_frames = 0` for N64 to ensure 60 FPS single-frame execution without state rollback overhead.
 
 ---
 
