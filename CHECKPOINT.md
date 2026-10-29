@@ -183,25 +183,39 @@ cat local.properties
 
 ### Build & Unit Test Verification
 ```bash
-# 1. Run Host Linux Verification Tests (Exit code 0 required)
+# 1. Run Host Linux Verification Tests (All 10 suites, 278 assertions)
 make -C tests
 
-# 2. Assemble Debug APK
-./gradlew assembleDebug
-# Output: app/build/outputs/apk/debug/app-debug.apk (~45 MB)
+# 2. Assemble All Standalone Debug APKs
+export JAVA_HOME=/home/the-dev/.sdkman/candidates/java/17.0.20-tem
+export PATH=$JAVA_HOME/bin:$PATH
+./gradlew testDebugUnitTest assembleDebug
+
+# Outputs in exports/ directory:
+# - exports/RetroArcade-v1.0.0.apk (~43 MB)
+# - exports/RetroHandheld-GBA-v1.0.0.apk (~8 MB)
+# - exports/RetroN64-v1.0.0.apk (~11 MB)
 ```
 
 ### Deploy & Debug on Device via ADB
 ```bash
-# 1. Install to connected device
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+# 1. Install target APK to connected device
+adb install -r exports/RetroArcade-v1.0.0.apk
+# or
+adb install -r exports/RetroHandheld-GBA-v1.0.0.apk
+# or
+adb install -r exports/RetroN64-v1.0.0.apk
 
 # 2. Grant all-files access
 adb shell appops set com.arcade.engine MANAGE_EXTERNAL_STORAGE allow
+# (or com.retro.handheld / com.retro.n64)
 
-# 3. Launch the App
-adb shell am force-stop com.arcade.engine
+# 3. Launch Target App
 adb shell am start -n com.arcade.engine/.MainActivity
+# or
+adb shell am start -n com.retro.handheld/.MainActivity
+# or
+adb shell am start -n com.retro.n64/.MainActivity
 
 # 4. Stream Logs
 adb logcat -v time -s ArcadeEngine ArcadeCoreHost ArcadeRenderer RomNormalizer MainActivity
